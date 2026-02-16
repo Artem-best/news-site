@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Новостной портал (одностраничный)</title>
     <style>
-        /* ... стили без изменений (те же, что были) ... */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -147,7 +146,7 @@
 
     <script>
         (function() {
-            // ===== Данные сайта (те же, что и раньше, с полными текстами) =====
+            // ===== Данные сайта =====
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -237,26 +236,22 @@
             // ===== Определяем базовый путь =====
             function getBasePath() {
                 let path = window.location.pathname;
-                // Если это файл index.html (или просто каталог), удаляем имя файла
                 if (path.endsWith('/')) return path;
                 const parts = path.split('/');
                 if (parts[parts.length-1].includes('.html')) {
-                    parts.pop(); // удаляем имя файла
+                    parts.pop();
                     return parts.join('/') + '/';
                 }
-                // Если путь не заканчивается слешем и не содержит .html, считаем, что это каталог
                 return path + (path.endsWith('/') ? '' : '/');
             }
 
             const BASE_PATH = getBasePath();
 
-            // ===== Вспомогательные функции =====
             function getCategoryName(categoryId) {
                 const cat = categories.find(c => c.id === categoryId);
                 return cat ? cat.name : categoryId;
             }
 
-            // ===== Функции отрисовки страниц =====
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -312,21 +307,16 @@
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Роутер с учётом базового пути =====
             function router() {
-                // Получаем путь относительно корня сайта
                 let fullPath = window.location.pathname;
                 let relativePath = fullPath.startsWith(BASE_PATH) 
-                    ? fullPath.slice(BASE_PATH.length - 1) // оставляем начальный слеш
+                    ? fullPath.slice(BASE_PATH.length - 1)
                     : fullPath;
-                // Убираем ведущий слеш для удобства сравнения
                 if (relativePath.startsWith('/')) {
                     relativePath = relativePath.slice(1);
                 }
-                // Убираем пустые хвосты
                 if (relativePath === '') relativePath = '/';
 
-                // Сопоставляем с маршрутами
                 if (relativePath === '/' || relativePath === 'index.html') {
                     renderHome();
                 } else if (relativePath.startsWith('category/')) {
@@ -339,29 +329,31 @@
                     document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a data-link="/">Вернуться на главную</a></p>';
                 }
 
-                // Отправляем виртуальный просмотр в Яндекс.Метрику
                 if (typeof ym !== 'undefined') {
                     ym(106838887, 'hit', window.location.pathname);
                 }
             }
 
-            // ===== Обработка кликов =====
             function handleLinkClick(e) {
                 const link = e.target.closest('a[data-link]');
                 if (!link) return;
 
                 e.preventDefault();
-                const targetPath = link.getAttribute('data-link'); // начинается с /
-                // Формируем новый абсолютный URL с учётом базового пути
-                const newUrl = BASE_PATH + targetPath.slice(1); // убираем начальный слеш у targetPath
+                const targetPath = link.getAttribute('data-link');
+                const newUrl = BASE_PATH + targetPath.slice(1);
                 history.pushState(null, '', newUrl);
-                router(); // вызываем роутер для обновления контента
+                router();
+
+                // Добавлено: отправляем событие просмотра страницы в Firebase Metrika
+                setTimeout(() => {
+                    if (typeof window.logPageView === 'function') {
+                        window.logPageView(window.location.pathname, document.title);
+                    }
+                }, 100);
             }
 
-            // ===== Обработка кнопок назад/вперёд =====
             window.addEventListener('popstate', router);
 
-            // ===== Инициализация =====
             document.addEventListener('DOMContentLoaded', function() {
                 document.body.addEventListener('click', handleLinkClick);
                 router();
@@ -370,138 +362,122 @@
     </script>
 
     <!-- ========== FIREBASE METRIKA ========== -->
-<!-- Подключаем Firebase SDK (compat-версии) -->
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
-<script>
-  // ===== 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (ВАШ КОНФИГ) =====
-  const firebaseConfig = {
-    apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
-    authDomain: "news-metrics-1a432.firebaseapp.com",
-    projectId: "news-metrics-1a432",
-    storageBucket: "news-metrics-1a432.firebasestorage.app",
-    messagingSenderId: "1001069127753",
-    appId: "1:1001069127753:web:5a2b210ce8a36d54a2b798",
-    measurementId: "G-MPDWPDFT9Y"
-  };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+    <script>
+        // ===== 1. ИНИЦИАЛИЗАЦИЯ FIREBASE =====
+        const firebaseConfig = {
+            apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
+            authDomain: "news-metrics-1a432.firebaseapp.com",
+            projectId: "news-metrics-1a432",
+            storageBucket: "news-metrics-1a432.firebasestorage.app",
+            messagingSenderId: "1001069127753",
+            appId: "1:1001069127753:web:5a2b210ce8a36d54a2b798",
+            measurementId: "G-MPDWPDFT9Y"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
 
-  // ===== 2. ФУНКЦИИ ДЛЯ ОТПРАВКИ ДАННЫХ =====
-  async function sendEvent(collection, data) {
-    try {
-      await db.collection(collection).add({
-        ...data,
-        sessionId: window.METRIKA_SESSION_ID,
-        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-        userAgent: navigator.userAgent,
-        pageUrl: window.location.pathname
-      });
-    } catch (e) {
-      console.warn('Firestore error', e);
-    }
-  }
-
-  // ===== 3. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
-  window.METRIKA_SESSION_ID = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-  window.METRIKA_CURRENT_PAGE = null;
-  window.METRIKA_PAGE_START = null;
-  window.METRIKA_MAX_SCROLL = 0;
-
-  // ===== 4. ОТСЛЕЖИВАНИЕ ПРОСМОТРОВ СТРАНИЦ (ВЫЗЫВАЕТСЯ ВРУЧНУЮ ИЛИ ЧЕРЕЗ РОУТЕР) =====
-  window.logPageView = function(url, title) {
-    // Фиксируем уход с предыдущей страницы
-    if (window.METRIKA_CURRENT_PAGE) {
-      const timeSpent = Date.now() - window.METRIKA_PAGE_START;
-      sendEvent('page_exits', {
-        fromPage: window.METRIKA_CURRENT_PAGE,
-        timeSpentMs: timeSpent,
-        maxScroll: window.METRIKA_MAX_SCROLL
-      });
-    }
-
-    // Новая страница
-    window.METRIKA_CURRENT_PAGE = url;
-    window.METRIKA_PAGE_START = Date.now();
-    window.METRIKA_MAX_SCROLL = 0;
-
-    sendEvent('page_views', {
-      url: url,
-      title: title || document.title,
-      referrer: document.referrer || null
-    });
-  };
-
-  // ===== 5. АВТОМАТИЧЕСКОЕ ЛОГГИРОВАНИЕ ПРИ ЗАГРУЗКЕ =====
-  (function() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', () => {
-        window.logPageView(window.location.pathname, document.title);
-      });
-    } else {
-      window.logPageView(window.location.pathname, document.title);
-    }
-  })();
-
-  // ===== 6. ОТСЛЕЖИВАНИЕ ПРОКРУТКИ =====
-  let scrollTimeout;
-  window.addEventListener('scroll', function() {
-    if (!window.METRIKA_CURRENT_PAGE) return;
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(function() {
-      const scrollPercent = Math.round((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100);
-      const newScroll = Math.min(100, scrollPercent);
-      if (newScroll > window.METRIKA_MAX_SCROLL) {
-        window.METRIKA_MAX_SCROLL = newScroll;
-        // Отправляем только при достижении порогов (чтобы не спамить)
-        if ([25, 50, 75, 100].includes(newScroll)) {
-          sendEvent('scroll_depth', { depth: newScroll });
+        async function sendEvent(collection, data) {
+            try {
+                await db.collection(collection).add({
+                    ...data,
+                    sessionId: window.METRIKA_SESSION_ID,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    userAgent: navigator.userAgent,
+                    pageUrl: window.location.pathname
+                });
+            } catch (e) {
+                console.warn('Firestore error', e);
+            }
         }
-      }
-    }, 200);
-  });
 
-  // ===== 7. ОТСЛЕЖИВАНИЕ КЛИКОВ =====
-  document.addEventListener('click', function(e) {
-    if (!window.METRIKA_CURRENT_PAGE) return;
-    const target = e.target.tagName + 
-      (e.target.id ? '#' + e.target.id : '') + 
-      (e.target.className ? '.' + e.target.className : '');
-    sendEvent('clicks', {
-      x: e.clientX,
-      y: e.clientY,
-      target: target
-    });
-  });
+        window.METRIKA_SESSION_ID = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        window.METRIKA_CURRENT_PAGE = null;
+        window.METRIKA_PAGE_START = null;
+        window.METRIKA_MAX_SCROLL = 0;
 
-  // ===== 8. ФИКСАЦИЯ УХОДА СО СТРАНИЦЫ ПРИ ЗАКРЫТИИ ВКЛАДКИ =====
-  window.addEventListener('beforeunload', function() {
-    if (window.METRIKA_CURRENT_PAGE) {
-      const timeSpent = Date.now() - window.METRIKA_PAGE_START;
-      sendEvent('page_exits', {
-        fromPage: window.METRIKA_CURRENT_PAGE,
-        timeSpentMs: timeSpent,
-        maxScroll: window.METRIKA_MAX_SCROLL
-      });
-    }
-  });
+        window.logPageView = function(url, title) {
+            if (window.METRIKA_CURRENT_PAGE) {
+                const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+                sendEvent('page_exits', {
+                    fromPage: window.METRIKA_CURRENT_PAGE,
+                    timeSpentMs: timeSpent,
+                    maxScroll: window.METRIKA_MAX_SCROLL
+                });
+            }
 
-  // ===== 9. ИНТЕГРАЦИЯ С SPA-РОУТЕРОМ (ЕСЛИ ОН ЕСТЬ) =====
-  // Если у вас есть функция router, переопределим её, чтобы автоматически логировать переходы
-  if (typeof window.router === 'function') {
-    const originalRouter = window.router;
-    window.router = function(path) {
-      originalRouter(path);
-      // Даём время на обновление title
-      setTimeout(() => {
-        window.logPageView(window.location.pathname, document.title);
-      }, 100);
-    };
-  }
-</script>
-<!-- ========== КОНЕЦ FIREBASE METRIKA ========== -->
+            window.METRIKA_CURRENT_PAGE = url;
+            window.METRIKA_PAGE_START = Date.now();
+            window.METRIKA_MAX_SCROLL = 0;
+
+            sendEvent('page_views', {
+                url: url,
+                title: title || document.title,
+                referrer: document.referrer || null
+            });
+        };
+
+        (function() {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => {
+                    window.logPageView(window.location.pathname, document.title);
+                });
+            } else {
+                window.logPageView(window.location.pathname, document.title);
+            }
+        })();
+
+        let scrollTimeout;
+        window.addEventListener('scroll', function() {
+            if (!window.METRIKA_CURRENT_PAGE) return;
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(function() {
+                const scrollPercent = Math.round((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100);
+                const newScroll = Math.min(100, scrollPercent);
+                if (newScroll > window.METRIKA_MAX_SCROLL) {
+                    window.METRIKA_MAX_SCROLL = newScroll;
+                    if ([25, 50, 75, 100].includes(newScroll)) {
+                        sendEvent('scroll_depth', { depth: newScroll });
+                    }
+                }
+            }, 200);
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!window.METRIKA_CURRENT_PAGE) return;
+            const target = e.target.tagName + 
+                (e.target.id ? '#' + e.target.id : '') + 
+                (e.target.className ? '.' + e.target.className : '');
+            sendEvent('clicks', {
+                x: e.clientX,
+                y: e.clientY,
+                target: target
+            });
+        });
+
+        window.addEventListener('beforeunload', function() {
+            if (window.METRIKA_CURRENT_PAGE) {
+                const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+                sendEvent('page_exits', {
+                    fromPage: window.METRIKA_CURRENT_PAGE,
+                    timeSpentMs: timeSpent,
+                    maxScroll: window.METRIKA_MAX_SCROLL
+                });
+            }
+        });
+
+        if (typeof window.router === 'function') {
+            const originalRouter = window.router;
+            window.router = function(path) {
+                originalRouter(path);
+                setTimeout(() => {
+                    window.logPageView(window.location.pathname, document.title);
+                }, 100);
+            };
+        }
+    </script>
+    <!-- ========== КОНЕЦ FIREBASE METRIKA ========== -->
 </body>
-
 </html>
-
