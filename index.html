@@ -368,6 +368,140 @@
             });
         })();
     </script>
+
+    <!-- ========== FIREBASE METRIKA ========== -->
+<!-- Подключаем Firebase SDK (compat-версии) -->
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+<script>
+  // ===== 1. ИНИЦИАЛИЗАЦИЯ FIREBASE (ВАШ КОНФИГ) =====
+  const firebaseConfig = {
+    apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
+    authDomain: "news-metrics-1a432.firebaseapp.com",
+    projectId: "news-metrics-1a432",
+    storageBucket: "news-metrics-1a432.firebasestorage.app",
+    messagingSenderId: "1001069127753",
+    appId: "1:1001069127753:web:5a2b210ce8a36d54a2b798",
+    measurementId: "G-MPDWPDFT9Y"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+
+  // ===== 2. ФУНКЦИИ ДЛЯ ОТПРАВКИ ДАННЫХ =====
+  async function sendEvent(collection, data) {
+    try {
+      await db.collection(collection).add({
+        ...data,
+        sessionId: window.METRIKA_SESSION_ID,
+        timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        userAgent: navigator.userAgent,
+        pageUrl: window.location.pathname
+      });
+    } catch (e) {
+      console.warn('Firestore error', e);
+    }
+  }
+
+  // ===== 3. ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ =====
+  window.METRIKA_SESSION_ID = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+  window.METRIKA_CURRENT_PAGE = null;
+  window.METRIKA_PAGE_START = null;
+  window.METRIKA_MAX_SCROLL = 0;
+
+  // ===== 4. ОТСЛЕЖИВАНИЕ ПРОСМОТРОВ СТРАНИЦ (ВЫЗЫВАЕТСЯ ВРУЧНУЮ ИЛИ ЧЕРЕЗ РОУТЕР) =====
+  window.logPageView = function(url, title) {
+    // Фиксируем уход с предыдущей страницы
+    if (window.METRIKA_CURRENT_PAGE) {
+      const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+      sendEvent('page_exits', {
+        fromPage: window.METRIKA_CURRENT_PAGE,
+        timeSpentMs: timeSpent,
+        maxScroll: window.METRIKA_MAX_SCROLL
+      });
+    }
+
+    // Новая страница
+    window.METRIKA_CURRENT_PAGE = url;
+    window.METRIKA_PAGE_START = Date.now();
+    window.METRIKA_MAX_SCROLL = 0;
+
+    sendEvent('page_views', {
+      url: url,
+      title: title || document.title,
+      referrer: document.referrer || null
+    });
+  };
+
+  // ===== 5. АВТОМАТИЧЕСКОЕ ЛОГГИРОВАНИЕ ПРИ ЗАГРУЗКЕ =====
+  (function() {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        window.logPageView(window.location.pathname, document.title);
+      });
+    } else {
+      window.logPageView(window.location.pathname, document.title);
+    }
+  })();
+
+  // ===== 6. ОТСЛЕЖИВАНИЕ ПРОКРУТКИ =====
+  let scrollTimeout;
+  window.addEventListener('scroll', function() {
+    if (!window.METRIKA_CURRENT_PAGE) return;
+    clearTimeout(scrollTimeout);
+    scrollTimeout = setTimeout(function() {
+      const scrollPercent = Math.round((window.scrollY + window.innerHeight) / document.documentElement.scrollHeight * 100);
+      const newScroll = Math.min(100, scrollPercent);
+      if (newScroll > window.METRIKA_MAX_SCROLL) {
+        window.METRIKA_MAX_SCROLL = newScroll;
+        // Отправляем только при достижении порогов (чтобы не спамить)
+        if ([25, 50, 75, 100].includes(newScroll)) {
+          sendEvent('scroll_depth', { depth: newScroll });
+        }
+      }
+    }, 200);
+  });
+
+  // ===== 7. ОТСЛЕЖИВАНИЕ КЛИКОВ =====
+  document.addEventListener('click', function(e) {
+    if (!window.METRIKA_CURRENT_PAGE) return;
+    const target = e.target.tagName + 
+      (e.target.id ? '#' + e.target.id : '') + 
+      (e.target.className ? '.' + e.target.className : '');
+    sendEvent('clicks', {
+      x: e.clientX,
+      y: e.clientY,
+      target: target
+    });
+  });
+
+  // ===== 8. ФИКСАЦИЯ УХОДА СО СТРАНИЦЫ ПРИ ЗАКРЫТИИ ВКЛАДКИ =====
+  window.addEventListener('beforeunload', function() {
+    if (window.METRIKA_CURRENT_PAGE) {
+      const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+      sendEvent('page_exits', {
+        fromPage: window.METRIKA_CURRENT_PAGE,
+        timeSpentMs: timeSpent,
+        maxScroll: window.METRIKA_MAX_SCROLL
+      });
+    }
+  });
+
+  // ===== 9. ИНТЕГРАЦИЯ С SPA-РОУТЕРОМ (ЕСЛИ ОН ЕСТЬ) =====
+  // Если у вас есть функция router, переопределим её, чтобы автоматически логировать переходы
+  if (typeof window.router === 'function') {
+    const originalRouter = window.router;
+    window.router = function(path) {
+      originalRouter(path);
+      // Даём время на обновление title
+      setTimeout(() => {
+        window.logPageView(window.location.pathname, document.title);
+      }, 100);
+    };
+  }
+</script>
+<!-- ========== КОНЕЦ FIREBASE METRIKA ========== -->
 </body>
 
 </html>
+
