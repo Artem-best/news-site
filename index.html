@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Новостной портал (одностраничный)</title>
     <style>
+        /* Все ваши стили остаются без изменений */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -107,16 +108,18 @@
         a {
             color: #005f73;
             cursor: pointer;
+            text-decoration: none;
         }
         a:hover {
             color: #0a9396;
+            text-decoration: underline;
         }
         .back-link {
             display: inline-block;
             margin-top: 20px;
         }
     </style>
-    <!-- Yandex.Metrika counter (замените 90000000 на реальный номер счётчика) -->
+    <!-- Yandex.Metrika counter (замените 90000000 на реальный номер) -->
     <script type="text/javascript" >
         (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)}; m[i].l=1*new Date(); for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }} k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)}) (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym"); ym(90000000, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
     </script>
@@ -130,12 +133,12 @@
     </header>
     <nav>
         <ul>
-            <li><a data-link="/">Главная</a></li>
-            <li><a data-link="/category/politics">Политика</a></li>
-            <li><a data-link="/category/sport">Спорт</a></li>
-            <li><a data-link="/category/tech">Технологии</a></li>
-            <li><a data-link="/category/science">Наука</a></li>
-            <li><a data-link="/category/culture">Культура</a></li>
+            <li><a href="#/">Главная</a></li>
+            <li><a href="#/category/politics">Политика</a></li>
+            <li><a href="#/category/sport">Спорт</a></li>
+            <li><a href="#/category/tech">Технологии</a></li>
+            <li><a href="#/category/science">Наука</a></li>
+            <li><a href="#/category/culture">Культура</a></li>
         </ul>
     </nav>
     <main id="content">
@@ -147,7 +150,7 @@
 
     <script>
         (function() {
-            // ===== Данные сайта (с расширенными текстами и картинками) =====
+            // ===== Данные сайта (те же самые, что и раньше) =====
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -349,31 +352,27 @@
                 }
             ];
 
-            // ===== Определяем базовый путь (корень репозитория) =====
+            // ===== Определяем базовый путь для картинок (корень репозитория) =====
             function getBasePath() {
                 let path = window.location.pathname;
-                if (path.endsWith('/')) return path;
-                const parts = path.split('/');
-                if (parts[parts.length-1].includes('.html')) {
-                    parts.pop();
-                    return parts.join('/') + '/';
-                }
-                return path + (path.endsWith('/') ? '' : '/');
+                // Удаляем возможный index.html из конца
+                if (path.endsWith('/index.html')) path = path.slice(0, -10);
+                if (path.endsWith('.html')) path = path.slice(0, -5);
+                if (!path.endsWith('/')) path += '/';
+                return path;
             }
-
             const BASE_PATH = getBasePath();
 
-            // ===== Получение названия категории =====
+            // ===== Функция для исправления путей картинок =====
+            function fixImagePaths(htmlContent) {
+                // Заменяет src="filename.jpg" на src="/BASE_PATH/filename.jpg"
+                return htmlContent.replace(/src="(?!https?:\/\/|\/\/|\/)([^"]+)"/g, `src="${BASE_PATH}$1"`);
+            }
+
+            // ===== Вспомогательные функции =====
             function getCategoryName(categoryId) {
                 const cat = categories.find(c => c.id === categoryId);
                 return cat ? cat.name : categoryId;
-            }
-
-            // ===== Функция для автоматического исправления путей к картинкам =====
-            function fixImagePaths(htmlContent) {
-                // Заменяет src="filename.jpg" на src="BASE_PATHfilename.jpg"
-                // Не трогает абсолютные ссылки (http://, https://, //, /)
-                return htmlContent.replace(/src="(?!https?:\/\/|\/\/|\/)([^"]+)"/g, `src="${BASE_PATH}$1"`);
             }
 
             // ===== Рендер главной =====
@@ -383,7 +382,7 @@
                 latest.forEach(article => {
                     html += `
                         <div class="news-item">
-                            <h3><a data-link="/article/${article.id}">${article.title}</a></h3>
+                            <h3><a href="#/article/${article.id}">${article.title}</a></h3>
                             <p>${article.content.replace(/<[^>]+>/g, '').substring(0, 100)}...</p>
                             <span class="category-badge">${getCategoryName(article.category)}</span>
                         </div>
@@ -404,95 +403,63 @@
                     catArticles.forEach(article => {
                         html += `
                             <article>
-                                <h3><a data-link="/article/${article.id}">${article.title}</a></h3>
+                                <h3><a href="#/article/${article.id}">${article.title}</a></h3>
                                 <p>${article.content.replace(/<[^>]+>/g, '').substring(0, 150)}...</p>
                                 <small>${article.date}</small>
                             </article>
                         `;
                     });
                 }
-                html += '</div><p><a data-link="/">Вернуться на главную</a></p>';
+                html += '</div><p><a href="#/">Вернуться на главную</a></p>';
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Рендер статьи (с фиксом путей к картинкам) =====
+            // ===== Рендер статьи =====
             function renderArticle(articleId) {
                 const article = articles.find(a => a.id === articleId);
                 if (!article) {
-                    document.getElementById('content').innerHTML = '<h2>Статья не найдена</h2><p><a data-link="/">Вернуться на главную</a></p>';
+                    document.getElementById('content').innerHTML = '<h2>Статья не найдена</h2><p><a href="#/">Вернуться на главную</a></p>';
                     return;
                 }
                 const catName = getCategoryName(article.category);
-                // Исправляем пути к картинкам внутри контента статьи
                 const fixedContent = fixImagePaths(article.content);
                 const html = `
                     <article class="full-article">
                         <h2>${article.title}</h2>
-                        <p class="meta">Категория: <a data-link="/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
+                        <p class="meta">Категория: <a href="#/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
                         <div class="article-content">${fixedContent}</div>
-                        <p><a data-link="/category/${article.category}">← Назад к ${catName}</a> | <a data-link="/">На главную</a></p>
+                        <p><a href="#/category/${article.category}">← Назад к ${catName}</a> | <a href="#/">На главную</a></p>
                     </article>
                 `;
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Роутер =====
+            // ===== Роутер на основе хэша =====
             function router() {
-                let fullPath = window.location.pathname;
-                let relativePath = fullPath.startsWith(BASE_PATH) 
-                    ? fullPath.slice(BASE_PATH.length - 1)
-                    : fullPath;
-                if (relativePath.startsWith('/')) {
-                    relativePath = relativePath.slice(1);
-                }
-                if (relativePath === '') relativePath = '/';
-
-                if (relativePath === '/' || relativePath === 'index.html') {
+                let hash = window.location.hash.slice(1); // убираем #
+                if (hash === '' || hash === '/') {
                     renderHome();
-                } else if (relativePath.startsWith('category/')) {
-                    const categoryId = relativePath.replace('category/', '');
+                } else if (hash.startsWith('/category/')) {
+                    const categoryId = hash.replace('/category/', '');
                     renderCategory(categoryId);
-                } else if (relativePath.startsWith('article/')) {
-                    const articleId = relativePath.replace('article/', '');
+                } else if (hash.startsWith('/article/')) {
+                    const articleId = hash.replace('/article/', '');
                     renderArticle(articleId);
                 } else {
-                    document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a data-link="/">Вернуться на главную</a></p>';
+                    // Неизвестный хэш — показываем 404
+                    document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a href="#/">Вернуться на главную</a></p>';
                 }
 
-                // Отправка виртуального хита в Яндекс.Метрику (если счётчик инициализирован)
+                // Отправка виртуального хита в Яндекс.Метрику (если нужно)
                 if (typeof ym !== 'undefined') {
-                    ym(90000000, 'hit', window.location.pathname);
+                    ym(90000000, 'hit', window.location.pathname + window.location.hash);
                 }
             }
 
-            // ===== Обработчик кликов по ссылкам с data-link =====
-            function handleLinkClick(e) {
-                const link = e.target.closest('a[data-link]');
-                if (!link) return;
-
-                e.preventDefault();
-                const targetPath = link.getAttribute('data-link');
-                const newUrl = BASE_PATH + targetPath.slice(1);
-                history.pushState(null, '', newUrl);
-                router();
-            }
-
-            // ===== Восстановление пути после редиректа из 404.html =====
-            (function restorePathFromRedirect() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const redirectPath = urlParams.get('path');
-                if (redirectPath) {
-                    // Заменяем URL в адресной строке на чистый путь (убираем ?path=...)
-                    history.replaceState(null, '', decodeURIComponent(redirectPath));
-                }
-            })();
-
-            // ===== Инициализация =====
-            window.addEventListener('popstate', router);
-            document.addEventListener('DOMContentLoaded', function() {
-                document.body.addEventListener('click', handleLinkClick);
-                router();
-            });
+            // ===== Обработчик изменения хэша =====
+            window.addEventListener('hashchange', router);
+            // Первоначальный запуск роутера
+            window.addEventListener('DOMContentLoaded', router);
         })();
     </script>
 </body>
