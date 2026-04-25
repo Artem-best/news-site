@@ -116,19 +116,9 @@
             margin-top: 20px;
         }
     </style>
-    <!-- Yandex.Metrika counter -->
+    <!-- Yandex.Metrika counter (замените 90000000 на реальный номер счётчика) -->
     <script type="text/javascript" >
-        (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
-        m[i].l=1*new Date();
-        for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }}
-        k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)})
-        (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
-        ym(90000000, "init", {   // ЗАМЕНИТЕ 90000000 на номер своего счётчика
-            clickmap:true,
-            trackLinks:true,
-            accurateTrackBounce:true,
-            webvisor:true
-        });
+        (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)}; m[i].l=1*new Date(); for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }} k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)}) (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym"); ym(90000000, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
     </script>
     <noscript><div><img src="https://mc.yandex.ru/watch/90000000" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
     <!-- /Yandex.Metrika counter -->
@@ -359,7 +349,7 @@
                 }
             ];
 
-            // ===== Определяем базовый путь =====
+            // ===== Определяем базовый путь (корень репозитория) =====
             function getBasePath() {
                 let path = window.location.pathname;
                 if (path.endsWith('/')) return path;
@@ -373,11 +363,20 @@
 
             const BASE_PATH = getBasePath();
 
+            // ===== Получение названия категории =====
             function getCategoryName(categoryId) {
                 const cat = categories.find(c => c.id === categoryId);
                 return cat ? cat.name : categoryId;
             }
 
+            // ===== Функция для автоматического исправления путей к картинкам =====
+            function fixImagePaths(htmlContent) {
+                // Заменяет src="filename.jpg" на src="BASE_PATHfilename.jpg"
+                // Не трогает абсолютные ссылки (http://, https://, //, /)
+                return htmlContent.replace(/src="(?!https?:\/\/|\/\/|\/)([^"]+)"/g, `src="${BASE_PATH}$1"`);
+            }
+
+            // ===== Рендер главной =====
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -394,6 +393,7 @@
                 document.getElementById('content').innerHTML = html;
             }
 
+            // ===== Рендер категории =====
             function renderCategory(categoryId) {
                 const catName = getCategoryName(categoryId);
                 const catArticles = articles.filter(a => a.category === categoryId);
@@ -415,6 +415,7 @@
                 document.getElementById('content').innerHTML = html;
             }
 
+            // ===== Рендер статьи (с фиксом путей к картинкам) =====
             function renderArticle(articleId) {
                 const article = articles.find(a => a.id === articleId);
                 if (!article) {
@@ -422,17 +423,20 @@
                     return;
                 }
                 const catName = getCategoryName(article.category);
+                // Исправляем пути к картинкам внутри контента статьи
+                const fixedContent = fixImagePaths(article.content);
                 const html = `
                     <article class="full-article">
                         <h2>${article.title}</h2>
                         <p class="meta">Категория: <a data-link="/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
-                        <div class="article-content">${article.content}</div>
+                        <div class="article-content">${fixedContent}</div>
                         <p><a data-link="/category/${article.category}">← Назад к ${catName}</a> | <a data-link="/">На главную</a></p>
                     </article>
                 `;
                 document.getElementById('content').innerHTML = html;
             }
 
+            // ===== Роутер =====
             function router() {
                 let fullPath = window.location.pathname;
                 let relativePath = fullPath.startsWith(BASE_PATH) 
@@ -455,11 +459,13 @@
                     document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a data-link="/">Вернуться на главную</a></p>';
                 }
 
+                // Отправка виртуального хита в Яндекс.Метрику (если счётчик инициализирован)
                 if (typeof ym !== 'undefined') {
                     ym(90000000, 'hit', window.location.pathname);
                 }
             }
 
+            // ===== Обработчик кликов по ссылкам с data-link =====
             function handleLinkClick(e) {
                 const link = e.target.closest('a[data-link]');
                 if (!link) return;
@@ -471,8 +477,18 @@
                 router();
             }
 
-            window.addEventListener('popstate', router);
+            // ===== Восстановление пути после редиректа из 404.html =====
+            (function restorePathFromRedirect() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const redirectPath = urlParams.get('path');
+                if (redirectPath) {
+                    // Заменяем URL в адресной строке на чистый путь (убираем ?path=...)
+                    history.replaceState(null, '', decodeURIComponent(redirectPath));
+                }
+            })();
 
+            // ===== Инициализация =====
+            window.addEventListener('popstate', router);
             document.addEventListener('DOMContentLoaded', function() {
                 document.body.addEventListener('click', handleLinkClick);
                 router();
