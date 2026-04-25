@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Перенаправление...</title>
+    <script>
+        (function() {
+            // Сохраняем полный путь, включая поисковые параметры и якорь
+            var fullPath = window.location.pathname + window.location.search + window.location.hash;
+            // Избегаем циклического редиректа
+            if (fullPath.indexOf('redirected=1') === -1) {
+                var separator = fullPath.indexOf('?') === -1 ? '?' : '&';
+                window.location.replace('index.html?redirected=1&path=' + encodeURIComponent(fullPath));
+            } else {
+                // На случай ошибки — просто идём на главную
+                window.location.replace('index.html');
+            }
+        })();
+    </script>
+</head>
+<body>
+    <p>Перенаправление... Если ничего не происходит, <a href="index.html">нажмите сюда</a>.</p>
+</body>
+</html>
