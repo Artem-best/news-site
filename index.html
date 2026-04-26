@@ -643,18 +643,16 @@
             }
         }, 500);
     </script>
-
-    <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
    <!-- START_ADMIN -->
 <script>
     (function() {
         let adminActive = false;
         let originalContent = null;
 
-        // Функция получения чистого кода сайта (удаляет блок с админ-панелью)
-        async function getCleanSiteCode() {
-            const response = await fetch(window.location.href);
-            let html = await response.text();
+        // Получаем чистый HTML без админ-панели (синхронно, на основе текущего DOM)
+        function getCleanSiteCode() {
+            const cloneDoc = document.cloneNode(true);
+            let html = cloneDoc.documentElement.outerHTML;
             const startMarker = '<!-- START_ADMIN -->';
             const endMarker = '<!-- END_ADMIN -->';
             let startIdx = html.indexOf(startMarker);
@@ -664,12 +662,10 @@
                     html = html.slice(0, startIdx) + html.slice(endIdx + endMarker.length);
                 }
             }
-            // Убираем лишние пустые строки после удаления
             html = html.replace(/\n\s*\n/g, '\n');
-            return html;
+            return '<!DOCTYPE html>\n' + html;
         }
 
-        // Фильтрация событий админ-панели
         function filterAdminEvents(data) {
             const filtered = {};
             for (const [collection, records] of Object.entries(data)) {
@@ -691,9 +687,7 @@
         }
 
         function showAdminLogin() {
-            if (!originalContent) {
-                originalContent = document.getElementById('content').innerHTML;
-            }
+            if (!originalContent) originalContent = document.getElementById('content').innerHTML;
             document.getElementById('content').innerHTML = `
                 <div class="admin-container">
                     <h2>Вход в панель администратора</h2>
@@ -744,7 +738,6 @@
             const statusDiv = document.getElementById('exportStatus');
             const errorDiv = document.getElementById('exportError');
 
-            // Общая функция загрузки данных из Firestore
             async function fetchMetrics() {
                 const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
                 let result = {};
@@ -754,57 +747,33 @@
                     snapshot.forEach(doc => {
                         let data = doc.data();
                         if (data.userAgent) delete data.userAgent;
-                        if (data.timestamp && data.timestamp.toDate) {
-                            data.timestamp = data.timestamp.toDate().toISOString();
-                        }
+                        if (data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
                         docs.push({ id: doc.id, ...data });
                     });
                     docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-                    // Фильтруем админ-события
                     const filtered = docs.filter(record => {
                         const urls = [record.pageUrl, record.url, record.fromPage];
-                        for (let u of urls) {
-                            if (u && (u.includes('#/admin') || u.includes('/admin'))) {
-                                return false;
-                            }
-                        }
+                        for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
                         return true;
                     });
-                    // Применяем лимит, если задан
                     let limit = null;
                     const limitRaw = limitInput.value.trim();
-                    if (limitRaw !== '') {
-                        if (/^\d+$/.test(limitRaw)) {
-                            limit = parseInt(limitRaw, 10);
-                            if (limit <= 0) limit = null;
-                        }
+                    if (limitRaw !== '' && /^\d+$/.test(limitRaw)) {
+                        limit = parseInt(limitRaw, 10);
+                        if (limit <= 0) limit = null;
                     }
-                    if (limit && limit > 0) {
-                        result[col] = filtered.slice(-limit);
-                    } else {
-                        result[col] = filtered;
-                    }
+                    result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
                 }
                 return result;
             }
 
             async function exportMetricsOnly() {
-                statusDiv.innerText = '';
                 errorDiv.innerText = '';
-                // Валидация лимита (только цифры)
                 const limitRaw = limitInput.value.trim();
-                if (limitRaw !== '') {
-                    if (!/^\d+$/.test(limitRaw)) {
-                        errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры (целое положительное число).';
-                        limitInput.value = '';
-                        return;
-                    }
-                    const limit = parseInt(limitRaw, 10);
-                    if (limit <= 0) {
-                        errorDiv.innerText = 'Ошибка: лимит должен быть больше 0.';
-                        limitInput.value = '';
-                        return;
-                    }
+                if (limitRaw !== '' && !/^\d+$/.test(limitRaw)) {
+                    errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры.';
+                    limitInput.value = '';
+                    return;
                 }
                 statusDiv.innerText = 'Загрузка данных...';
                 try {
@@ -819,35 +788,25 @@
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    statusDiv.innerText = 'Готово! Файл метрик скачан.';
+                    statusDiv.innerText = 'Готово!';
                 } catch (err) {
                     errorDiv.innerText = 'Ошибка: ' + err.message;
                 }
             }
 
             async function exportFullTxt() {
-                statusDiv.innerText = '';
                 errorDiv.innerText = '';
-                // Валидация лимита
                 const limitRaw = limitInput.value.trim();
-                if (limitRaw !== '') {
-                    if (!/^\d+$/.test(limitRaw)) {
-                        errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры (целое положительное число).';
-                        limitInput.value = '';
-                        return;
-                    }
-                    const limit = parseInt(limitRaw, 10);
-                    if (limit <= 0) {
-                        errorDiv.innerText = 'Ошибка: лимит должен быть больше 0.';
-                        limitInput.value = '';
-                        return;
-                    }
+                if (limitRaw !== '' && !/^\d+$/.test(limitRaw)) {
+                    errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры.';
+                    limitInput.value = '';
+                    return;
                 }
                 statusDiv.innerText = 'Загрузка метрик и кода сайта...';
                 try {
                     const metrics = await fetchMetrics();
                     const metricsJson = JSON.stringify(metrics, null, 2);
-                    const siteCode = await getCleanSiteCode();
+                    const siteCode = getCleanSiteCode();
                     const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
                     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
                     const url = URL.createObjectURL(blob);
@@ -858,7 +817,7 @@
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    statusDiv.innerText = 'Готово! Файл с метриками и кодом скачан.';
+                    statusDiv.innerText = 'Готово!';
                 } catch (err) {
                     errorDiv.innerText = 'Ошибка: ' + err.message;
                 }
@@ -868,14 +827,11 @@
             exportFullBtn.addEventListener('click', exportFullTxt);
         }
 
-        // Переопределяем роутер для поддержки админки
         const originalRouter = window.originalRouterForAdmin;
         function adminAwareRouter() {
             const hash = window.location.hash.slice(1);
             if (hash === '/admin') {
-                if (!adminActive) {
-                    showAdminLogin();
-                }
+                if (!adminActive) showAdminLogin();
                 return;
             }
             if (adminActive) {
@@ -887,14 +843,9 @@
             }
             if (originalRouter) originalRouter();
         }
-
         window.addEventListener('hashchange', adminAwareRouter);
-        window.addEventListener('DOMContentLoaded', () => {
-            adminAwareRouter();
-        });
-        if (window.location.hash.slice(1) === '/admin') {
-            setTimeout(() => adminAwareRouter(), 0);
-        }
+        window.addEventListener('DOMContentLoaded', adminAwareRouter);
+        if (window.location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
     })();
 </script>
 <!-- END_ADMIN -->
