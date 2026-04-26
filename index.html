@@ -3,24 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Новостной портал (плохая версия)</title>
+    <title>Новостной портал (одностраничный)</title>
     <style>
-        /* ===== УХУДШЕННЫЕ СТИЛИ ===== */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #e0e0e0;
-            color: #888;
+            background-color: #f4f4f4;
+            color: #333;
         }
         header {
-            background-color: #8a9ba0;
-            color: #bbb;
+            background-color: #005f73;
+            color: white;
             padding: 20px;
             text-align: center;
         }
         nav {
-            background-color: #a0b3b6;
+            background-color: #0a9396;
             padding: 10px;
         }
         nav ul {
@@ -32,28 +31,24 @@
             padding: 0;
         }
         nav a {
-            color: #ccc;
+            color: white;
             text-decoration: none;
             font-weight: bold;
             cursor: pointer;
         }
         nav a:hover {
             text-decoration: underline;
-            color: #ddd;
         }
         main {
             max-width: 1200px;
             margin: 20px auto;
             padding: 20px;
-            background-color: #ddd;
+            background-color: white;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             min-height: 60vh;
         }
-        /* Заголовки как обычный текст */
         h1, h2, h3 {
-            color: #999;
-            font-size: 1em;
-            font-weight: normal;
+            color: #005f73;
         }
         .news-grid {
             display: grid;
@@ -61,57 +56,104 @@
             gap: 20px;
         }
         .news-item {
-            background-color: #ccc;
+            background-color: #e9d8a6;
             padding: 15px;
             border-radius: 8px;
-            /* transition удалена */
+            transition: transform 0.2s;
+        }
+        .news-item:hover {
+            transform: scale(1.02);
         }
         .news-item h3 {
             margin-top: 0;
         }
-        /* Скрываем подписи категорий на главной */
         .category-badge {
-            display: none;
+            background-color: #005f73;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            display: inline-block;
         }
         .news-list article {
-            border-bottom: 1px solid #aaa;
+            border-bottom: 1px solid #ccc;
             padding: 15px 0;
         }
         .news-list article:last-child {
             border-bottom: none;
         }
         .full-article .meta {
-            color: #aaa;
+            color: #666;
             font-style: italic;
         }
         .article-content p {
             line-height: 1.6;
-            color: #888;
         }
-        /* КАРТИНКИ: уменьшенные, по левому краю, без обтекания */
         .article-content img {
-            width: 30%;
+            max-width: 100%;
             height: auto;
             display: block;
-            margin: 20px 0;
+            margin: 20px auto;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         footer {
-            background-color: #8a9ba0;
-            color: #bbb;
+            background-color: #005f73;
+            color: white;
             text-align: center;
             padding: 10px;
             margin-top: 20px;
         }
         a {
-            color: #aaa;
+            color: #005f73;
             cursor: pointer;
             text-decoration: none;
         }
         a:hover {
-            color: #ccc;
+            color: #0a9396;
             text-decoration: underline;
+        }
+        /* Стили админ-панели */
+        .admin-container {
+            max-width: 800px;
+            margin: 50px auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        .admin-container h2 {
+            color: #005f73;
+            margin-top: 0;
+        }
+        .admin-container input, .admin-container button {
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 16px;
+        }
+        .admin-container input {
+            width: 100%;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        .admin-container button {
+            background-color: #0a9396;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .admin-container button:hover {
+            background-color: #005f73;
+        }
+        .error {
+            color: red;
+            margin-top: 10px;
+        }
+        .success {
+            color: green;
         }
     </style>
     <!-- Yandex.Metrika counter (замените 90000000 на реальный номер) -->
@@ -123,7 +165,7 @@
 </head>
 <body>
     <header>
-        <h1>Новостной портал (плохая версия)</h1>
+        <h1>Новостной портал</h1>
         <p>Все новости в одном месте</p>
     </header>
     <nav>
@@ -136,14 +178,17 @@
             <li><a href="#/category/culture">Культура</a></li>
         </ul>
     </nav>
-    <main id="content"></main>
+    <main id="content">
+        <!-- Сюда подставляется контент -->
+    </main>
     <footer>
-        <p>&copy; 2025 Новостной портал. Учебный проект (плохая версия).</p>
+        <p>&copy; 2025 Новостной портал. Учебный проект.</p>
     </footer>
 
+    <!-- ========== ОСНОВНОЙ СКРИПТ САЙТА ========== -->
     <script>
         (function() {
-            // ===== ДАННЫЕ САЙТА (ПОЛНЫЕ СТАТЬИ) =====
+            // ---------- ДАННЫЕ САЙТА (статьи) ----------
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -152,6 +197,7 @@
                 { id: 'culture', name: 'Культура' }
             ];
 
+            // ПОЛНЫЕ СТАТЬИ (все 10)
             const articles = [
                 // Политика 1
                 {
@@ -345,7 +391,7 @@
                 }
             ];
 
-            // ===== Определяем базовый путь для картинок =====
+            // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
             function getBasePath() {
                 let path = window.location.pathname;
                 if (path.endsWith('/index.html')) path = path.slice(0, -10);
@@ -364,7 +410,7 @@
                 return cat ? cat.name : categoryId;
             }
 
-            // ===== Рендеры =====
+            // ---------- РЕНДЕРЫ ----------
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -373,6 +419,7 @@
                         <div class="news-item">
                             <h3><a href="#/article/${article.id}">${article.title}</a></h3>
                             <p>${article.content.replace(/<[^>]+>/g, '').substring(0, 100)}...</p>
+                            <span class="category-badge">${getCategoryName(article.category)}</span>
                         </div>
                     `;
                 });
@@ -412,14 +459,15 @@
                 const html = `
                     <article class="full-article">
                         <h2>${article.title}</h2>
-                        <p class="meta">Категория: ${catName} | Дата: ${article.date}</p>
+                        <p class="meta">Категория: <a href="#/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
                         <div class="article-content">${fixedContent}</div>
+                        <p><a href="#/category/${article.category}">← Назад к ${catName}</a> | <a href="#/">На главную</a></p>
                     </article>
                 `;
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Роутер =====
+            // ---------- РОУТЕР (основной) ----------
             function router() {
                 let hash = window.location.hash.slice(1);
                 if (hash === '' || hash === '/') {
@@ -445,15 +493,18 @@
                 }
             }
 
-            window.addEventListener('hashchange', router);
-            window.addEventListener('DOMContentLoaded', router);
+            // Сохраняем оригинальный роутер
+            const originalRouter = router;
+            window.originalRouterForAdmin = originalRouter; // для восстановления
         })();
     </script>
 
-    <!-- ========== FIREBASE ========== -->
+    <!-- ========== FIREBASE SDK И МЕТРИКИ ========== -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <script>
+        // --- ИНИЦИАЛИЗАЦИЯ FIREBASE ---
         const firebaseConfig = {
             apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
             authDomain: "news-metrics-1a432.firebaseapp.com",
@@ -592,5 +643,171 @@
             }
         }, 500);
     </script>
+
+    <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
+    <!-- START_ADMIN -->
+    <script>
+        (function() {
+            // Перехват роутера для админки
+            let adminActive = false;
+            let originalContent = null;
+            let adminRouterActive = false;
+
+            function showAdminLogin() {
+                if (!originalContent) {
+                    originalContent = document.getElementById('content').innerHTML;
+                }
+                document.getElementById('content').innerHTML = `
+                    <div class="admin-container">
+                        <h2>Вход в панель администратора</h2>
+                        <input type="text" id="login" placeholder="Логин" />
+                        <input type="password" id="password" placeholder="Пароль" />
+                        <button id="loginBtn">Войти</button>
+                        <div id="loginError" class="error"></div>
+                    </div>
+                `;
+                const loginBtn = document.getElementById('loginBtn');
+                loginBtn.addEventListener('click', () => {
+                    const login = document.getElementById('login').value;
+                    const pwd = document.getElementById('password').value;
+                    if (login === 'admin' && pwd === '66665555') {
+                        showAdminPanel();
+                    } else {
+                        document.getElementById('loginError').innerText = 'Неверный логин или пароль';
+                    }
+                });
+                adminActive = true;
+            }
+
+            function showAdminPanel() {
+                document.getElementById('content').innerHTML = `
+                    <div class="admin-container">
+                        <h2>Панель экспорта метрик</h2>
+                        <label>Ограничение записей в каждой коллекции (необязательно, только целое положительное число):</label>
+                        <input type="text" id="limitInput" placeholder="например, 100" />
+                        <div style="margin-top: 20px;">
+                            <button id="exportMetricsBtn">Получить метрики</button>
+                            <button id="exportFullBtn">Получить полный файл для анализа</button>
+                        </div>
+                        <div id="exportStatus" class="success"></div>
+                        <div id="exportError" class="error"></div>
+                    </div>
+                `;
+
+                const limitInput = document.getElementById('limitInput');
+                const exportMetricsBtn = document.getElementById('exportMetricsBtn');
+                const exportFullBtn = document.getElementById('exportFullBtn');
+                const statusDiv = document.getElementById('exportStatus');
+                const errorDiv = document.getElementById('exportError');
+
+                async function exportData(includeSiteCode = false) {
+                    statusDiv.innerText = '';
+                    errorDiv.innerText = '';
+                    let limit = null;
+                    const limitRaw = limitInput.value.trim();
+                    if (limitRaw !== '') {
+                        if (!/^\d+$/.test(limitRaw)) {
+                            errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры (целое положительное число).';
+                            limitInput.value = '';
+                            return;
+                        }
+                        limit = parseInt(limitRaw, 10);
+                        if (limit <= 0) {
+                            errorDiv.innerText = 'Ошибка: лимит должен быть больше 0.';
+                            limitInput.value = '';
+                            return;
+                        }
+                    }
+                    statusDiv.innerText = 'Загрузка данных из Firestore...';
+                    const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
+                    const result = {};
+                    try {
+                        for (const col of collections) {
+                            const snapshot = await db.collection(col).get();
+                            const docs = [];
+                            snapshot.forEach(doc => {
+                                let data = doc.data();
+                                if (data.userAgent) delete data.userAgent;
+                                if (data.timestamp && data.timestamp.toDate) {
+                                    data.timestamp = data.timestamp.toDate().toISOString();
+                                }
+                                docs.push({ id: doc.id, ...data });
+                            });
+                            docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+                            if (limit && limit > 0) {
+                                result[col] = docs.slice(-limit);
+                            } else {
+                                result[col] = docs;
+                            }
+                        }
+                        if (includeSiteCode) {
+                            result.site_code = await getCleanSiteCode();
+                        }
+                        const jsonStr = JSON.stringify(result, null, 2);
+                        const blob = new Blob([jsonStr], { type: 'application/json' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = includeSiteCode ? 'full_export_with_code.json' : 'metrics_export.json';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                        statusDiv.innerText = 'Готово! Файл скачан.';
+                    } catch (err) {
+                        console.error(err);
+                        errorDiv.innerText = 'Ошибка при экспорте: ' + err.message;
+                    }
+                }
+
+                exportMetricsBtn.addEventListener('click', () => exportData(false));
+                exportFullBtn.addEventListener('click', () => exportData(true));
+            }
+
+            // Функция получения чистого кода сайта (удаляет блок между START_ADMIN и END_ADMIN)
+            async function getCleanSiteCode() {
+                const response = await fetch(window.location.href);
+                let html = await response.text();
+                // Удаляем всё от <!-- START_ADMIN --> до <!-- END_ADMIN --> (включительно)
+                html = html.replace(/<!-- START_ADMIN -->[\s\S]*?<!-- END_ADMIN -->/g, '');
+                return html;
+            }
+
+            // Переопределяем router для поддержки админки
+            const originalRouter = window.originalRouterForAdmin;
+            function adminAwareRouter() {
+                const hash = window.location.hash.slice(1);
+                if (hash === '/admin') {
+                    if (!adminActive) {
+                        showAdminLogin();
+                    } else {
+                        // уже показана, но если контент не тот? можно оставить как есть
+                    }
+                    return;
+                }
+                if (adminActive) {
+                    // Выходим из админки, восстанавливаем обычный контент
+                    if (originalContent) {
+                        document.getElementById('content').innerHTML = originalContent;
+                        originalContent = null;
+                    }
+                    adminActive = false;
+                }
+                if (originalRouter) originalRouter();
+            }
+
+            window.addEventListener('hashchange', adminAwareRouter);
+            // Запускаем при загрузке
+            window.addEventListener('DOMContentLoaded', () => {
+                adminAwareRouter();
+            });
+            // Если уже есть хэш при загрузке скрипта
+            if (window.location.hash.slice(1) === '/admin') {
+                // Отложим, чтобы DOM успел построиться
+                setTimeout(() => adminAwareRouter(), 0);
+            }
+        })();
+    </script>
+    <!-- END_ADMIN -->
 </body>
 </html>
