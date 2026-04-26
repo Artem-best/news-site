@@ -645,208 +645,205 @@
     </script>
    <!-- START_ADMIN -->
 <script>
-    (function() {
-        let adminActive = false;
-        let originalContent = null;
+(function() {
+    let adminActive = false;
+    let originalContent = null;
 
-        // Получаем чистый HTML без админ-панели (синхронно, на основе текущего DOM)
-        function getCleanSiteCode() {
-            const cloneDoc = document.cloneNode(true);
-            let html = cloneDoc.documentElement.outerHTML;
-            const startMarker = '<!-- START_ADMIN -->';
-            const endMarker = '<!-- END_ADMIN -->';
-            let startIdx = html.indexOf(startMarker);
-            if (startIdx !== -1) {
-                let endIdx = html.indexOf(endMarker, startIdx);
-                if (endIdx !== -1) {
-                    html = html.slice(0, startIdx) + html.slice(endIdx + endMarker.length);
+    // --- НАДЁЖНОЕ ПОЛУЧЕНИЕ ЧИСТОГО КОДА (БЕЗ АДМИН-ПАНЕЛИ) ---
+    function getCleanSiteCode() {
+        const cloneDoc = document.cloneNode(true);
+        // Удаляем все скрипты, содержащие админ-функции
+        const scripts = cloneDoc.querySelectorAll('script');
+        for (let script of scripts) {
+            if (script.textContent.includes('START_ADMIN') || 
+                script.textContent.includes('adminAwareRouter') ||
+                script.textContent.includes('showAdminLogin') ||
+                script.textContent.includes('getCleanSiteCode')) {
+                script.remove();
+            }
+        }
+        // Удаляем элементы с классом admin-container
+        const adminContainers = cloneDoc.querySelectorAll('.admin-container');
+        adminContainers.forEach(el => el.remove());
+        const html = cloneDoc.documentElement.outerHTML;
+        return '<!DOCTYPE html>\n' + html.replace(/\n\s*\n/g, '\n');
+    }
+
+    // --- ОСТАЛЬНЫЕ ФУНКЦИИ (showAdminLogin, showAdminPanel, fetchMetrics, экспорт) ---
+    // (они остаются без изменений, но ссылаются на новую getCleanSiteCode)
+
+    function showAdminLogin() {
+        if (!originalContent) originalContent = document.getElementById('content').innerHTML;
+        document.getElementById('content').innerHTML = `
+            <div class="admin-container">
+                <h2>Вход в панель администратора</h2>
+                <input type="text" id="login" placeholder="Логин" />
+                <input type="password" id="password" placeholder="Пароль" />
+                <button id="loginBtn">Войти</button>
+                <div id="loginError" class="error"></div>
+            </div>
+        `;
+        const pwdField = document.getElementById('password');
+        if (pwdField) pwdField.type = 'password';
+        const loginBtn = document.getElementById('loginBtn');
+        loginBtn.addEventListener('click', () => {
+            const login = document.getElementById('login').value;
+            const pwd = document.getElementById('password').value;
+            if (login === 'admin' && pwd === '66665555') {
+                showAdminPanel();
+            } else {
+                const errDiv = document.getElementById('loginError');
+                errDiv.innerText = 'Неверный логин или пароль';
+                const pwdField2 = document.getElementById('password');
+                if (pwdField2) {
+                    pwdField2.value = '';
+                    pwdField2.type = 'password';
                 }
             }
-            html = html.replace(/\n\s*\n/g, '\n');
-            return '<!DOCTYPE html>\n' + html;
-        }
+        });
+        adminActive = true;
+    }
 
-        function filterAdminEvents(data) {
-            const filtered = {};
-            for (const [collection, records] of Object.entries(data)) {
-                if (!Array.isArray(records)) {
-                    filtered[collection] = records;
-                    continue;
-                }
-                filtered[collection] = records.filter(record => {
+    function showAdminPanel() {
+        document.getElementById('content').innerHTML = `
+            <div class="admin-container">
+                <h2>Панель экспорта метрик</h2>
+                <label>Ограничение записей (только целое положительное число):</label>
+                <input type="text" id="limitInput" placeholder="например, 100" />
+                <div style="margin-top: 20px;">
+                    <button id="exportMetricsBtn">Получить метрики</button>
+                    <button id="exportFullBtn">Получить полный файл для анализа</button>
+                </div>
+                <div id="exportStatus" class="success"></div>
+                <div id="exportError" class="error"></div>
+            </div>
+        `;
+        const limitInput = document.getElementById('limitInput');
+        const exportMetricsBtn = document.getElementById('exportMetricsBtn');
+        const exportFullBtn = document.getElementById('exportFullBtn');
+        const statusDiv = document.getElementById('exportStatus');
+        const errorDiv = document.getElementById('exportError');
+
+        async function fetchMetrics(limit) {
+            const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
+            let result = {};
+            for (const col of collections) {
+                const snapshot = await db.collection(col).get();
+                const docs = [];
+                snapshot.forEach(doc => {
+                    let data = doc.data();
+                    if (data.userAgent) delete data.userAgent;
+                    if (data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
+                    docs.push({ id: doc.id, ...data });
+                });
+                docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+                const filtered = docs.filter(record => {
                     const urls = [record.pageUrl, record.url, record.fromPage];
-                    for (let u of urls) {
-                        if (u && (u.includes('#/admin') || u.includes('/admin'))) {
-                            return false;
-                        }
-                    }
+                    for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
                     return true;
                 });
+                result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
             }
-            return filtered;
+            return result;
         }
 
-        function showAdminLogin() {
-            if (!originalContent) originalContent = document.getElementById('content').innerHTML;
-            document.getElementById('content').innerHTML = `
-                <div class="admin-container">
-                    <h2>Вход в панель администратора</h2>
-                    <input type="text" id="login" placeholder="Логин" />
-                    <input type="password" id="password" placeholder="Пароль" />
-                    <button id="loginBtn">Войти</button>
-                    <div id="loginError" class="error"></div>
-                </div>
-            `;
-            const pwdField = document.getElementById('password');
-            if (pwdField) pwdField.type = 'password';
-            const loginBtn = document.getElementById('loginBtn');
-            loginBtn.addEventListener('click', () => {
-                const login = document.getElementById('login').value;
-                const pwd = document.getElementById('password').value;
-                if (login === 'admin' && pwd === '66665555') {
-                    showAdminPanel();
-                } else {
-                    const errDiv = document.getElementById('loginError');
-                    errDiv.innerText = 'Неверный логин или пароль';
-                    const pwdField2 = document.getElementById('password');
-                    if (pwdField2) {
-                        pwdField2.value = '';
-                        pwdField2.type = 'password';
-                    }
-                }
-            });
-            adminActive = true;
-        }
-
-        function showAdminPanel() {
-            document.getElementById('content').innerHTML = `
-                <div class="admin-container">
-                    <h2>Панель экспорта метрик</h2>
-                    <label>Ограничение записей в каждой коллекции (необязательно, только целое положительное число):</label>
-                    <input type="text" id="limitInput" placeholder="например, 100" />
-                    <div style="margin-top: 20px;">
-                        <button id="exportMetricsBtn">Получить метрики</button>
-                        <button id="exportFullBtn">Получить полный файл для анализа</button>
-                    </div>
-                    <div id="exportStatus" class="success"></div>
-                    <div id="exportError" class="error"></div>
-                </div>
-            `;
-            const limitInput = document.getElementById('limitInput');
-            const exportMetricsBtn = document.getElementById('exportMetricsBtn');
-            const exportFullBtn = document.getElementById('exportFullBtn');
-            const statusDiv = document.getElementById('exportStatus');
-            const errorDiv = document.getElementById('exportError');
-
-            async function fetchMetrics() {
-                const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
-                let result = {};
-                for (const col of collections) {
-                    const snapshot = await db.collection(col).get();
-                    const docs = [];
-                    snapshot.forEach(doc => {
-                        let data = doc.data();
-                        if (data.userAgent) delete data.userAgent;
-                        if (data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
-                        docs.push({ id: doc.id, ...data });
-                    });
-                    docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-                    const filtered = docs.filter(record => {
-                        const urls = [record.pageUrl, record.url, record.fromPage];
-                        for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
-                        return true;
-                    });
-                    let limit = null;
-                    const limitRaw = limitInput.value.trim();
-                    if (limitRaw !== '' && /^\d+$/.test(limitRaw)) {
-                        limit = parseInt(limitRaw, 10);
-                        if (limit <= 0) limit = null;
-                    }
-                    result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
-                }
-                return result;
-            }
-
-            async function exportMetricsOnly() {
-                errorDiv.innerText = '';
-                const limitRaw = limitInput.value.trim();
-                if (limitRaw !== '' && !/^\d+$/.test(limitRaw)) {
-                    errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры.';
+        async function exportMetricsOnly() {
+            errorDiv.innerText = '';
+            const limitRaw = limitInput.value.trim();
+            let limit = null;
+            if (limitRaw !== '') {
+                if (!/^\d+$/.test(limitRaw)) {
+                    errorDiv.innerText = 'Ошибка: введите целое положительное число.';
                     limitInput.value = '';
                     return;
                 }
-                statusDiv.innerText = 'Загрузка данных...';
-                try {
-                    const metrics = await fetchMetrics();
-                    const jsonStr = JSON.stringify(metrics, null, 2);
-                    const blob = new Blob([jsonStr], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'metrics_export.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    statusDiv.innerText = 'Готово!';
-                } catch (err) {
-                    errorDiv.innerText = 'Ошибка: ' + err.message;
-                }
-            }
-
-            async function exportFullTxt() {
-                errorDiv.innerText = '';
-                const limitRaw = limitInput.value.trim();
-                if (limitRaw !== '' && !/^\d+$/.test(limitRaw)) {
-                    errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры.';
+                limit = parseInt(limitRaw, 10);
+                if (limit <= 0) {
+                    errorDiv.innerText = 'Ошибка: число должно быть больше 0.';
                     limitInput.value = '';
                     return;
                 }
-                statusDiv.innerText = 'Загрузка метрик и кода сайта...';
-                try {
-                    const metrics = await fetchMetrics();
-                    const metricsJson = JSON.stringify(metrics, null, 2);
-                    const siteCode = getCleanSiteCode();
-                    const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
-                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'full_export.txt';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    statusDiv.innerText = 'Готово!';
-                } catch (err) {
-                    errorDiv.innerText = 'Ошибка: ' + err.message;
-                }
             }
-
-            exportMetricsBtn.addEventListener('click', exportMetricsOnly);
-            exportFullBtn.addEventListener('click', exportFullTxt);
+            statusDiv.innerText = 'Загрузка данных...';
+            try {
+                const metrics = await fetchMetrics(limit);
+                const blob = new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'metrics_export.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusDiv.innerText = 'Готово! Файл метрик скачан.';
+            } catch (err) {
+                errorDiv.innerText = 'Ошибка: ' + err.message;
+            }
         }
 
-        const originalRouter = window.originalRouterForAdmin;
-        function adminAwareRouter() {
-            const hash = window.location.hash.slice(1);
-            if (hash === '/admin') {
-                if (!adminActive) showAdminLogin();
-                return;
-            }
-            if (adminActive) {
-                if (originalContent) {
-                    document.getElementById('content').innerHTML = originalContent;
-                    originalContent = null;
+        async function exportFullTxt() {
+            errorDiv.innerText = '';
+            const limitRaw = limitInput.value.trim();
+            let limit = null;
+            if (limitRaw !== '') {
+                if (!/^\d+$/.test(limitRaw)) {
+                    errorDiv.innerText = 'Ошибка: введите целое положительное число.';
+                    limitInput.value = '';
+                    return;
                 }
-                adminActive = false;
+                limit = parseInt(limitRaw, 10);
+                if (limit <= 0) {
+                    errorDiv.innerText = 'Ошибка: число должно быть больше 0.';
+                    limitInput.value = '';
+                    return;
+                }
             }
-            if (originalRouter) originalRouter();
+            statusDiv.innerText = 'Загрузка метрик и кода сайта...';
+            try {
+                const metrics = await fetchMetrics(limit);
+                const metricsJson = JSON.stringify(metrics, null, 2);
+                const siteCode = getCleanSiteCode(); // теперь чистая
+                const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'full_export.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusDiv.innerText = 'Готово! Файл с метриками и кодом скачан.';
+            } catch (err) {
+                errorDiv.innerText = 'Ошибка: ' + err.message;
+            }
         }
-        window.addEventListener('hashchange', adminAwareRouter);
-        window.addEventListener('DOMContentLoaded', adminAwareRouter);
-        if (window.location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
-    })();
+
+        exportMetricsBtn.addEventListener('click', exportMetricsOnly);
+        exportFullBtn.addEventListener('click', exportFullTxt);
+    }
+
+    const originalRouter = window.originalRouterForAdmin;
+    function adminAwareRouter() {
+        const hash = window.location.hash.slice(1);
+        if (hash === '/admin') {
+            if (!adminActive) showAdminLogin();
+            return;
+        }
+        if (adminActive) {
+            if (originalContent) {
+                document.getElementById('content').innerHTML = originalContent;
+                originalContent = null;
+            }
+            adminActive = false;
+        }
+        if (originalRouter) originalRouter();
+    }
+    window.addEventListener('hashchange', adminAwareRouter);
+    window.addEventListener('DOMContentLoaded', adminAwareRouter);
+    if (window.location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
+})();
 </script>
 <!-- END_ADMIN -->
 </body>
