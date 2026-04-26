@@ -3,23 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Новостной портал (одностраничный)</title>
+    <title>Новостной портал (плохая версия)</title>
     <style>
+        /* ===== УХУДШЕННЫЕ СТИЛИ ===== */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #e0e0e0;
+            color: #888; /* низкая контрастность */
         }
         header {
-            background-color: #005f73;
-            color: white;
+            background-color: #8a9ba0;
+            color: #bbb;
             padding: 20px;
             text-align: center;
         }
         nav {
-            background-color: #0a9396;
+            background-color: #a0b3b6;
             padding: 10px;
         }
         nav ul {
@@ -31,24 +32,28 @@
             padding: 0;
         }
         nav a {
-            color: white;
+            color: #ccc;
             text-decoration: none;
             font-weight: bold;
             cursor: pointer;
         }
         nav a:hover {
             text-decoration: underline;
+            color: #ddd;
         }
         main {
             max-width: 1200px;
             margin: 20px auto;
             padding: 20px;
-            background-color: white;
+            background-color: #ddd;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             min-height: 60vh;
         }
+        /* Заголовки как обычный текст (пункт 5) */
         h1, h2, h3 {
-            color: #005f73;
+            color: #999;
+            font-size: 1em;
+            font-weight: normal;
         }
         .news-grid {
             display: grid;
@@ -56,38 +61,33 @@
             gap: 20px;
         }
         .news-item {
-            background-color: #e9d8a6;
+            background-color: #ccc;
             padding: 15px;
             border-radius: 8px;
-            transition: transform 0.2s;
+            /* transition убрана (пункт 3) */
         }
-        .news-item:hover {
-            transform: scale(1.02);
-        }
+        /* .news-item:hover { transform: scale(1.02); } — УДАЛЕНО */
         .news-item h3 {
             margin-top: 0;
         }
+        /* Скрываем подписи категорий на главной (пункт 4) */
         .category-badge {
-            background-color: #005f73;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            display: inline-block;
+            display: none;
         }
         .news-list article {
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #aaa;
             padding: 15px 0;
         }
         .news-list article:last-child {
             border-bottom: none;
         }
         .full-article .meta {
-            color: #666;
+            color: #aaa;
             font-style: italic;
         }
         .article-content p {
             line-height: 1.6;
+            color: #888;
         }
         .article-content img {
             max-width: 100%;
@@ -98,24 +98,20 @@
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         footer {
-            background-color: #005f73;
-            color: white;
+            background-color: #8a9ba0;
+            color: #bbb;
             text-align: center;
             padding: 10px;
             margin-top: 20px;
         }
         a {
-            color: #005f73;
+            color: #aaa;
             cursor: pointer;
             text-decoration: none;
         }
         a:hover {
-            color: #0a9396;
+            color: #ccc;
             text-decoration: underline;
-        }
-        .back-link {
-            display: inline-block;
-            margin-top: 20px;
         }
     </style>
     <!-- Yandex.Metrika counter (замените 90000000 на реальный номер) -->
@@ -127,7 +123,7 @@
 </head>
 <body>
     <header>
-        <h1>Новостной портал</h1>
+        <h1>Новостной портал (плохая версия)</h1>
         <p>Все новости в одном месте</p>
     </header>
     <nav>
@@ -140,16 +136,14 @@
             <li><a href="#/category/culture">Культура</a></li>
         </ul>
     </nav>
-    <main id="content">
-        <!-- Сюда будет подставляться контент -->
-    </main>
+    <main id="content"></main>
     <footer>
-        <p>&copy; 2025 Новостной портал. Учебный проект.</p>
+        <p>&copy; 2025 Новостной портал. Учебный проект (плохая версия).</p>
     </footer>
 
     <script>
         (function() {
-            // ===== Данные сайта (полные статьи с картинками) =====
+            // ===== ДАННЫЕ САЙТА (ПОЛНЫЕ СТАТЬИ) =====
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -159,12 +153,12 @@
             ];
 
             const articles = [
-                // Политика - статья 1
-                { 
-                    id: 'politics1', 
-                    title: 'Госдума приняла закон о цифровом рубле', 
-                    category: 'politics', 
-                    date: '10 февраля 2025', 
+                // Политика 1
+                {
+                    id: 'politics1',
+                    title: 'Госдума приняла закон о цифровом рубле',
+                    category: 'politics',
+                    date: '10 февраля 2025',
                     content: `
                         <p>Государственная дума в третьем чтении приняла закон о внедрении цифрового рубля. Новая форма национальной валюты будет выпускаться Банком России и станет дополнением к наличным и безналичным деньгам. Ожидается, что первые операции с цифровым рублем начнутся уже в апреле.</p>
                         <img src="politics_00000001_001.jpg" alt="Цифровой рубль: визуализация" style="max-width:100%; margin: 20px auto; display:block;">
@@ -178,12 +172,12 @@
                         <p>Таким образом, Россия становится одной из первых стран мира, внедряющих государственную цифровую валюту на законодательном уровне. Это событие может стать драйвером развития всей финансовой системы страны.</p>
                     `
                 },
-                // Политика - статья 2
-                { 
-                    id: 'politics2', 
-                    title: 'Совет Федерации одобрил поправки в налоговый кодекс', 
-                    category: 'politics', 
-                    date: '9 февраля 2025', 
+                // Политика 2
+                {
+                    id: 'politics2',
+                    title: 'Совет Федерации одобрил поправки в налоговый кодекс',
+                    category: 'politics',
+                    date: '9 февраля 2025',
                     content: `
                         <p>Совет Федерации одобрил пакет поправок в Налоговый кодекс, касающихся поддержки малого и среднего бизнеса. Ставка страховых взносов для МСП снижается с 15% до 7,6% при превышении минимального размера оплаты труда.</p>
                         <img src="politics_00000002_001.jpg" alt="Заседание Совета Федерации" style="max-width:100%; margin: 20px auto; display:block;">
@@ -197,12 +191,12 @@
                         <p>Таким образом, новый пакет налоговых изменений оценивается как один из самых масштабных за последние годы. Бизнес-объединения положительно отреагировали на инициативы, отметив их сбалансированность и учёт интересов разных отраслей.</p>
                     `
                 },
-                // Спорт - статья 1
-                { 
-                    id: 'sport1', 
-                    title: 'Сборная России по футболу обыграла Иран в товарищеском матче', 
-                    category: 'sport', 
-                    date: '10 февраля 2025', 
+                // Спорт 1
+                {
+                    id: 'sport1',
+                    title: 'Сборная России по футболу обыграла Иран в товарищеском матче',
+                    category: 'sport',
+                    date: '10 февраля 2025',
                     content: `
                         <p>В товарищеском матче, прошедшем на стадионе «ВТБ Арена» в Москве, сборная России одержала победу над командой Ирана со счётом 2:1. Первый тайм завершился без голов, но во втором наши футболисты активизировались.</p>
                         <img src="sport_00000001_001.jpg" alt="Матч Россия-Иран" style="max-width:100%; margin: 20px auto; display:block;">
@@ -216,12 +210,12 @@
                         <p>Технический штаб сборной проанализирует все моменты и продолжит подготовку к отборочным матчам чемпионата мира 2026 года. Надеемся, что эта победа станет хорошей традицией.</p>
                     `
                 },
-                // Спорт - статья 2
-                { 
-                    id: 'sport2', 
-                    title: 'Российские хоккеисты вышли в финал Кубка Первого канала', 
-                    category: 'sport', 
-                    date: '9 февраля 2025', 
+                // Спорт 2
+                {
+                    id: 'sport2',
+                    title: 'Российские хоккеисты вышли в финал Кубка Первого канала',
+                    category: 'sport',
+                    date: '9 февраля 2025',
                     content: `
                         <p>Сборная России по хоккею разгромила команду Казахстана со счётом 5:1 в полуфинале Кубка Первого канала. Шайбы забросили Никита Гусев (дубль), Михаил Григоренко, Павел Бучневич и Александр Никишин.</p>
                         <img src="sport_00000002_001.jpg" alt="Хоккейная сборная России празднует победу" style="max-width:100%; margin: 20px auto; display:block;">
@@ -235,12 +229,12 @@
                         <p>Кубок Первого канала – традиционный предновогодний турнир, но в этом году он проходит в феврале из-за переноса. Победа в нём станет хорошей разминкой перед чемпионатом мира, который состоится в мае в Стокгольме.</p>
                     `
                 },
-                // Технологии - статья 1
-                { 
-                    id: 'tech1', 
-                    title: 'Яндекс представил новую нейросеть YandexGPT 3', 
-                    category: 'tech', 
-                    date: '10 февраля 2025', 
+                // Технологии 1
+                {
+                    id: 'tech1',
+                    title: 'Яндекс представил новую нейросеть YandexGPT 3',
+                    category: 'tech',
+                    date: '10 февраля 2025',
                     content: `
                         <p>Компания Яндекс анонсировала третью версию своей языковой модели YandexGPT. Нейросеть стала лучше понимать контекст диалога и генерировать более связные ответы на русском языке.</p>
                         <img src="tech_00000001_001.jpg" alt="Логотип YandexGPT 3" style="max-width:100%; margin: 20px auto; display:block;">
@@ -254,12 +248,12 @@
                         <p>В ближайшем будущем Яндекс планирует выпустить мобильное приложение на базе новой модели с расширенными возможностями голосового взаимодействия. Таким образом, YandexGPT 3 выходит на уровень ведущих мировых языковых моделей.</p>
                     `
                 },
-                // Технологии - статья 2
-                { 
-                    id: 'tech2', 
-                    title: 'В России создали квантовый процессор с 50 кубитами', 
-                    category: 'tech', 
-                    date: '8 февраля 2025', 
+                // Технологии 2
+                {
+                    id: 'tech2',
+                    title: 'В России создали квантовый процессор с 50 кубитами',
+                    category: 'tech',
+                    date: '8 февраля 2025',
                     content: `
                         <p>Учёные из Российского квантового центра и Физического института имени Лебедева представили прототип 50-кубитного квантового процессора. Это рекордный показатель для отечественных разработок.</p>
                         <img src="tech_00000002_001.jpg" alt="Квантовый процессор 50 кубитов" style="max-width:100%; margin: 20px auto; display:block;">
@@ -273,12 +267,12 @@
                         <p>Зарубежные коллеги уже проявили интерес к разработке, но пока сотрудничество ограничено из-за санкций. Тем не менее, российские учёные намерены продолжить развитие собственного квантового компьютера и к 2030 году достичь уровня в несколько тысяч кубитов.</p>
                     `
                 },
-                // Наука - статья 1
-                { 
-                    id: 'science1', 
-                    title: 'Астрономы открыли новую экзопланету в зоне обитаемости', 
-                    category: 'science', 
-                    date: '10 февраля 2025', 
+                // Наука 1
+                {
+                    id: 'science1',
+                    title: 'Астрономы открыли новую экзопланету в зоне обитаемости',
+                    category: 'science',
+                    date: '10 февраля 2025',
                     content: `
                         <p>Международная группа астрономов обнаружила экзопланету TOI-1233 c, которая находится в обитаемой зоне своей звезды — красного карлика в 120 световых годах от Земли.</p>
                         <img src="science_00000001_001.jpg" alt="Экзопланета TOI-1233 c" style="max-width:100%; margin: 20px auto; display:block;">
@@ -292,12 +286,12 @@
                         <p>Планета TOI-1233 c входит в список ближайших к Земле экзопланет в обитаемой зоне. Следующая цель – измерить её температуру и, возможно, обнаружить признаки наличия жидкого океана. Открытие вселяет надежду на то, что жизнь может существовать не только на Земле.</p>
                     `
                 },
-                // Наука - статья 2
-                { 
-                    id: 'science2', 
-                    title: 'Генетики расшифровали ДНК древнего бизона, жившего 30 тысяч лет назад', 
-                    category: 'science', 
-                    date: '7 февраля 2025', 
+                // Наука 2
+                {
+                    id: 'science2',
+                    title: 'Генетики расшифровали ДНК древнего бизона, жившего 30 тысяч лет назад',
+                    category: 'science',
+                    date: '7 февраля 2025',
                     content: `
                         <p>Российские учёные совместно с коллегами из Южной Кореи полностью расшифровали геном степного бизона, останки которого нашли в вечной мерзлоте Якутии. Возраст находки — около 30 тысяч лет.</p>
                         <img src="science_00000002_001.jpg" alt="Череп древнего бизона" style="max-width:100%; margin: 20px auto; display:block;">
@@ -311,12 +305,12 @@
                         <p>Российские генетики планируют продолжить сотрудничество с корейскими коллегами в рамках проекта по изучению древней фауны Сибири. Эти исследования дают уникальную информацию об эволюции жизни на Земле и климатических изменениях в прошлом.</p>
                     `
                 },
-                // Культура - статья 1
-                { 
-                    id: 'culture1', 
-                    title: 'В Третьяковской галерее открылась выставка картин Репина', 
-                    category: 'culture', 
-                    date: '10 февраля 2025', 
+                // Культура 1
+                {
+                    id: 'culture1',
+                    title: 'В Третьяковской галерее открылась выставка картин Репина',
+                    category: 'culture',
+                    date: '10 февраля 2025',
                     content: `
                         <p>В Третьяковской галерее на Крымском Валу стартовала выставка «Илья Репин. Мастер портрета», приуроченная к 180-летию со дня рождения художника. Экспозиция включает более 150 работ из музеев России и Беларуси, включая знаменитые «Бурлаки на Волге», «Не ждали» и «Иван Грозный и сын его Иван».</p>
                         <img src="culture_00000001_001.jpg" alt="Выставка Репина в Третьяковке" style="max-width:100%; margin: 20px auto; display:block;">
@@ -330,12 +324,12 @@
                         <p>После завершения московской выставки часть экспонатов отправятся в Санкт-Петербург, где будут показаны в Русском музее. Таким образом, поклонники творчества Репина из разных городов смогут насладиться его шедеврами.</p>
                     `
                 },
-                // Культура - статья 2
-                { 
-                    id: 'culture2', 
-                    title: 'Большой театр представил премьеру балета «Щелкунчик» в новой постановке', 
-                    category: 'culture', 
-                    date: '6 февраля 2025', 
+                // Культура 2
+                {
+                    id: 'culture2',
+                    title: 'Большой театр представил премьеру балета «Щелкунчик» в новой постановке',
+                    category: 'culture',
+                    date: '6 февраля 2025',
                     content: `
                         <p>На исторической сцене Большого театра с аншлагом прошла премьера балета Чайковского «Щелкунчик» в хореографии молодого постановщика Вячеслава Самодурова. Это современное прочтение классики: действие перенесено в наши дни, а сценография выполнена с использованием видеопроекций.</p>
                         <img src="culture_00000002_001.jpg" alt="Сцена из балета Щелкунчик" style="max-width:100%; margin: 20px auto; display:block;">
@@ -370,7 +364,7 @@
                 return cat ? cat.name : categoryId;
             }
 
-            // ===== Рендеры =====
+            // ===== Рендеры (ухудшенные) =====
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -379,7 +373,7 @@
                         <div class="news-item">
                             <h3><a href="#/article/${article.id}">${article.title}</a></h3>
                             <p>${article.content.replace(/<[^>]+>/g, '').substring(0, 100)}...</p>
-                            <span class="category-badge">${getCategoryName(article.category)}</span>
+                            <!-- Категория удалена (пункт 4) -->
                         </div>
                     `;
                 });
@@ -416,12 +410,13 @@
                 }
                 const catName = getCategoryName(article.category);
                 const fixedContent = fixImagePaths(article.content);
+                // Пункт 1: категория без ссылки
+                // Пункт 2: нет ссылок возврата
                 const html = `
                     <article class="full-article">
                         <h2>${article.title}</h2>
-                        <p class="meta">Категория: <a href="#/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
+                        <p class="meta">Категория: ${catName} | Дата: ${article.date}</p>
                         <div class="article-content">${fixedContent}</div>
-                        <p><a href="#/category/${article.category}">← Назад к ${catName}</a> | <a href="#/">На главную</a></p>
                     </article>
                 `;
                 document.getElementById('content').innerHTML = html;
@@ -458,12 +453,12 @@
         })();
     </script>
 
-    <!-- ========== FIREBASE SDK И МЕТРИКИ ========== -->
+    <!-- ========== FIREBASE SDK И МЕТРИКИ (полная копия из хорошей версии) ========== -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
     <script>
-        // 1. Инициализация Firebase
+        // Инициализация Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
             authDomain: "news-metrics-1a432.firebaseapp.com",
@@ -490,25 +485,17 @@
             }
         }
 
-        // Глобальные переменные для сессии
         window.METRIKA_SESSION_ID = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         window.METRIKA_CURRENT_PAGE = null;
         window.METRIKA_PAGE_START = null;
         window.METRIKA_MAX_SCROLL = 0;
         window.METRIKA_SCROLL_SENT_DEPTHS = {};
-
-        // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ПЕРВОГО ВЗАИМОДЕЙСТВИЯ ---
         window.METRIKA_INTERACTION_RECORDED = false;
-        window.METRIKA_PAGE_START_PERF = null; // время начала страницы (performance.now)
+        window.METRIKA_PAGE_START_PERF = null;
 
-        // --- ФУНКЦИЯ ДЛЯ СБОРА МЕТРИК ПРОИЗВОДИТЕЛЬНОСТИ (только для первой загрузки) ---
+        // Метрики производительности
         function logPerformanceMetrics() {
-            if (!window.performance || !window.performance.timing) {
-                console.warn("Performance API не поддерживается.");
-                return;
-            }
-
-            // Ждём полной загрузки страницы, чтобы собрать все тайминги
+            if (!window.performance || !window.performance.timing) return;
             window.addEventListener('load', () => {
                 setTimeout(() => {
                     const perfData = window.performance.timing;
@@ -518,56 +505,41 @@
                         domContentLoaded: perfData.domContentLoadedEventEnd - perfData.navigationStart,
                         loadEventEnd: perfData.loadEventEnd - perfData.navigationStart,
                     };
-                    // Проверяем, что значения не отрицательные
                     Object.keys(metrics).forEach(k => { if (metrics[k] < 0) metrics[k] = 0; });
-                    
-                    console.log("Метрики производительности для страницы:", metrics);
-                    sendEvent('performance_metrics', { 
-                        type: 'page_load', 
+                    sendEvent('performance_metrics', {
+                        type: 'page_load',
                         url: window.location.pathname + window.location.hash,
-                        ...metrics 
+                        ...metrics
                     });
                 }, 0);
             });
         }
 
-        // --- ФУНКЦИЯ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО КЛИКА/СКРОЛЛА (для текущей страницы) ---
         function setupFirstInteractionTracking() {
             if (window.METRIKA_INTERACTION_RECORDED) return;
-
             const startTime = window.METRIKA_PAGE_START_PERF !== null ? window.METRIKA_PAGE_START_PERF : performance.now();
             let recorded = false;
-
             const recordInteraction = (type) => {
                 if (recorded || window.METRIKA_INTERACTION_RECORDED) return;
                 recorded = true;
                 window.METRIKA_INTERACTION_RECORDED = true;
-
                 const interactionTime = Math.round(performance.now() - startTime);
-                console.log(`Первое взаимодействие (${type}) через ${interactionTime} мс на странице ${window.METRIKA_CURRENT_PAGE}`);
                 sendEvent('performance_metrics', {
                     type: 'first_interaction',
                     interactionType: type,
                     timeMs: interactionTime,
                     pageUrl: window.METRIKA_CURRENT_PAGE
                 });
-
-                // Удаляем слушатели после первого срабатывания
                 document.removeEventListener('click', recordClick);
                 window.removeEventListener('scroll', recordScroll);
             };
-
             const recordClick = () => recordInteraction('click');
             const recordScroll = () => recordInteraction('scroll');
-
             document.addEventListener('click', recordClick);
             window.addEventListener('scroll', recordScroll);
         }
 
-        // --- ОБНОВЛЁННАЯ ФУНКЦИЯ logPageView (с инициализацией метрик взаимодействия) ---
-        const originalLogPageView = window.logPageView || function() {};
         window.logPageView = function(url, title) {
-            // Отправка page_exit для предыдущей страницы
             if (window.METRIKA_CURRENT_PAGE) {
                 const timeSpent = Date.now() - window.METRIKA_PAGE_START;
                 sendEvent('page_exits', {
@@ -576,43 +548,30 @@
                     maxScroll: window.METRIKA_MAX_SCROLL
                 });
             }
-
-            // Сброс для новой страницы
             window.METRIKA_CURRENT_PAGE = url;
             window.METRIKA_PAGE_START = Date.now();
             window.METRIKA_MAX_SCROLL = 0;
             window.METRIKA_SCROLL_SENT_DEPTHS = {};
             window.METRIKA_INTERACTION_RECORDED = false;
             window.METRIKA_PAGE_START_PERF = performance.now();
-
-            // Отправка просмотра страницы
             sendEvent('page_views', {
                 url: url,
                 title: title || document.title,
                 referrer: document.referrer || null
             });
-
-            // Настройка отслеживания первого взаимодействия для этой страницы
             setupFirstInteractionTracking();
-
-            // Вызов оригинальной функции, если она была (для совместимости)
-            if (typeof originalLogPageView === 'function' && originalLogPageView !== window.logPageView) {
-                originalLogPageView(url, title);
-            }
         };
 
-        // --- ИНИЦИАЛИЗАЦИЯ ПРИ ПЕРВОЙ ЗАГРУЗКЕ ---
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 window.logPageView(window.location.pathname + window.location.hash, document.title);
-                logPerformanceMetrics(); // только один раз для первой загрузки
+                logPerformanceMetrics();
             });
         } else {
             window.logPageView(window.location.pathname + window.location.hash, document.title);
             logPerformanceMetrics();
         }
 
-        // --- ОСТАЛЬНЫЕ СТАНДАРТНЫЕ ОБРАБОТЧИКИ (скролл, клики, beforeunload) ---
         let scrollTimeout;
         window.addEventListener('scroll', function() {
             if (!window.METRIKA_CURRENT_PAGE) return;
@@ -623,7 +582,6 @@
                 const scrollTop = window.scrollY;
                 let percent = Math.round((scrollTop + winHeight) / scrollHeight * 100);
                 percent = Math.min(100, percent);
-                
                 const thresholds = [25, 50, 75, 100];
                 for (let t of thresholds) {
                     if (percent >= t && !window.METRIKA_SCROLL_SENT_DEPTHS[t]) {
@@ -631,7 +589,6 @@
                         sendEvent('scroll_depth', { depth: t });
                     }
                 }
-                
                 if (percent > window.METRIKA_MAX_SCROLL) {
                     window.METRIKA_MAX_SCROLL = percent;
                 }
@@ -662,7 +619,6 @@
             }
         });
 
-        // Если контент короче окна – фиксируем 100%
         setTimeout(() => {
             const scrollHeight = document.documentElement.scrollHeight;
             const winHeight = window.innerHeight;
@@ -673,6 +629,5 @@
             }
         }, 500);
     </script>
-    <!-- ========== КОНЕЦ FIREBASE МЕТРИКИ ========== -->
 </body>
 </html>
