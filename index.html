@@ -651,11 +651,19 @@
         let adminActive = false;
         let originalContent = null;
 
-        // Форматирование HTML для читаемого вывода
+        // Функция для красивого форматирования HTML (с отступами и переносами строк)
         function prettyPrintHtml(html) {
-            // Простейшее форматирование: добавляем переносы после > и перед <
-            // Для читаемости в JSON этого достаточно.
-            return html.replace(/>\s*</g, '>\n<');
+            // Используем DOMParser для создания DOM-дерева, затем сериализуем с отступами
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            // Преобразуем обратно в строку с отступами (2 пробела)
+            const serializer = new XMLSerializer();
+            let formatted = serializer.serializeToString(doc);
+            // Добавим символ новой строки после каждого закрывающего тега, чтобы не было слитно
+            formatted = formatted.replace(/>\s*</g, '>\n<');
+            // Удаляем лишние пустые строки (необязательно)
+            formatted = formatted.replace(/\n\s*\n/g, '\n');
+            return formatted;
         }
 
         // Удаление событий, связанных с админ-панелью (по URL)
@@ -667,11 +675,7 @@
                     continue;
                 }
                 filtered[collection] = records.filter(record => {
-                    // Проверяем поля, содержащие URL страницы
-                    const urls = [
-                        record.pageUrl, record.url, record.fromPage,
-                        record.pageUrl, record.url  // повтор на случай
-                    ];
+                    const urls = [record.pageUrl, record.url, record.fromPage];
                     for (let u of urls) {
                         if (u && (u.includes('#/admin') || u.includes('/admin'))) {
                             return false;
@@ -696,7 +700,6 @@
                     <div id="loginError" class="error"></div>
                 </div>
             `;
-            // Принудительно убедимся, что поле пароля имеет тип password (на случай, если браузер "теряет" глазок)
             const pwdField = document.getElementById('password');
             if (pwdField) pwdField.type = 'password';
             
@@ -709,11 +712,10 @@
                 } else {
                     const errDiv = document.getElementById('loginError');
                     errDiv.innerText = 'Неверный логин или пароль';
-                    // Очищаем поле пароля, но не удаляем глазок
                     const pwdField2 = document.getElementById('password');
                     if (pwdField2) {
                         pwdField2.value = '';
-                        pwdField2.type = 'password'; // повторно
+                        pwdField2.type = 'password';
                     }
                 }
             });
@@ -774,15 +776,25 @@
                             }
                             docs.push({ id: doc.id, ...data });
                         });
+                        // Сортировка по времени (старые → новые)
                         docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+                        // Фильтруем админ-события
+                        const filtered = docs.filter(record => {
+                            const urls = [record.pageUrl, record.url, record.fromPage];
+                            for (let u of urls) {
+                                if (u && (u.includes('#/admin') || u.includes('/admin'))) {
+                                    return false;
+                                }
+                            }
+                            return true;
+                        });
+                        // Обрезаем до лимита (последние N)
                         if (limit && limit > 0) {
-                            result[col] = docs.slice(-limit);
+                            result[col] = filtered.slice(-limit);
                         } else {
-                            result[col] = docs;
+                            result[col] = filtered;
                         }
                     }
-                    // Фильтруем события админ-панели
-                    result = filterAdminEvents(result);
                     
                     if (includeSiteCode) {
                         const rawCode = await getCleanSiteCode();
@@ -813,8 +825,8 @@
         async function getCleanSiteCode() {
             const response = await fetch(window.location.href);
             let html = await response.text();
-            // Удаляем всё от <!-- START_ADMIN --> до <!-- END_ADMIN --> (включительно)
-            html = html.replace(/<!-- START_ADMIN -->[\s\S]*?<!-- END_ADMIN -->/g, '');
+            // Удаляем всё от <!-- START_ADMIN --> до <!-- END_ADMIN -->, включая возможные пробелы и переводы строк
+            html = html.replace(/<!--\s*START_ADMIN\s*-->[\s\S]*?<!--\s*END_ADMIN\s*-->/gi, '');
             return html;
         }
 
