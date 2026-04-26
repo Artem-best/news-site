@@ -652,7 +652,8 @@
     // --- НАДЁЖНОЕ ПОЛУЧЕНИЕ ЧИСТОГО КОДА (БЕЗ АДМИН-ПАНЕЛИ) ---
     function getCleanSiteCode() {
         const cloneDoc = document.cloneNode(true);
-        // Удаляем все скрипты, содержащие админ-функции
+        
+        // 1. Удаляем скрипты с админ-логикой
         const scripts = cloneDoc.querySelectorAll('script');
         for (let script of scripts) {
             if (script.textContent.includes('START_ADMIN') || 
@@ -662,15 +663,27 @@
                 script.remove();
             }
         }
-        // Удаляем элементы с классом admin-container
+        
+        // 2. Удаляем элементы с классом admin-container
         const adminContainers = cloneDoc.querySelectorAll('.admin-container');
         adminContainers.forEach(el => el.remove());
-        const html = cloneDoc.documentElement.outerHTML;
-        return '<!DOCTYPE html>\n' + html.replace(/\n\s*\n/g, '\n');
+        
+        // 3. Удаляем стили, связанные с админ-панелью
+        const styleNodes = cloneDoc.querySelectorAll('style');
+        for (let style of styleNodes) {
+            if (style.textContent.includes('.admin-container')) {
+                style.remove();
+            }
+        }
+        
+        let html = cloneDoc.documentElement.outerHTML;
+        // 4. Удаляем оставшиеся комментарии-маркеры
+        html = html.replace(/<!-- START_ADMIN -->/g, '');
+        html = html.replace(/<!-- END_ADMIN -->/g, '');
+        // 5. Убираем лишние пустые строки
+        html = html.replace(/\n\s*\n/g, '\n');
+        return '<!DOCTYPE html>\n' + html;
     }
-
-    // --- ОСТАЛЬНЫЕ ФУНКЦИИ (showAdminLogin, showAdminPanel, fetchMetrics, экспорт) ---
-    // (они остаются без изменений, но ссылаются на новую getCleanSiteCode)
 
     function showAdminLogin() {
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
