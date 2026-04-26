@@ -442,12 +442,10 @@
                     document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a href="#/">Вернуться на главную</a></p>';
                 }
 
-                // Отправка виртуального хита в Яндекс.Метрику
                 if (typeof ym !== 'undefined') {
                     ym(90000000, 'hit', window.location.pathname + window.location.hash);
                 }
 
-                // Отправка просмотра страницы в Firebase
                 if (typeof window.logPageView === 'function') {
                     setTimeout(() => {
                         window.logPageView(window.location.pathname + window.location.hash, document.title);
@@ -497,10 +495,79 @@
         window.METRIKA_CURRENT_PAGE = null;
         window.METRIKA_PAGE_START = null;
         window.METRIKA_MAX_SCROLL = 0;
-        window.METRIKA_SCROLL_SENT_DEPTHS = {}; // для отправки каждого порога только один раз
+        window.METRIKA_SCROLL_SENT_DEPTHS = {};
 
-        // Логирование просмотра страницы
+        // --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ ПЕРВОГО ВЗАИМОДЕЙСТВИЯ ---
+        window.METRIKA_INTERACTION_RECORDED = false;
+        window.METRIKA_PAGE_START_PERF = null; // время начала страницы (performance.now)
+
+        // --- ФУНКЦИЯ ДЛЯ СБОРА МЕТРИК ПРОИЗВОДИТЕЛЬНОСТИ (только для первой загрузки) ---
+        function logPerformanceMetrics() {
+            if (!window.performance || !window.performance.timing) {
+                console.warn("Performance API не поддерживается.");
+                return;
+            }
+
+            // Ждём полной загрузки страницы, чтобы собрать все тайминги
+            window.addEventListener('load', () => {
+                setTimeout(() => {
+                    const perfData = window.performance.timing;
+                    const metrics = {
+                        ttfb: perfData.responseStart - perfData.requestStart,
+                        domInteractive: perfData.domInteractive - perfData.navigationStart,
+                        domContentLoaded: perfData.domContentLoadedEventEnd - perfData.navigationStart,
+                        loadEventEnd: perfData.loadEventEnd - perfData.navigationStart,
+                    };
+                    // Проверяем, что значения не отрицательные
+                    Object.keys(metrics).forEach(k => { if (metrics[k] < 0) metrics[k] = 0; });
+                    
+                    console.log("Метрики производительности для страницы:", metrics);
+                    sendEvent('performance_metrics', { 
+                        type: 'page_load', 
+                        url: window.location.pathname + window.location.hash,
+                        ...metrics 
+                    });
+                }, 0);
+            });
+        }
+
+        // --- ФУНКЦИЯ ДЛЯ ОТСЛЕЖИВАНИЯ ПЕРВОГО КЛИКА/СКРОЛЛА (для текущей страницы) ---
+        function setupFirstInteractionTracking() {
+            if (window.METRIKA_INTERACTION_RECORDED) return;
+
+            const startTime = window.METRIKA_PAGE_START_PERF !== null ? window.METRIKA_PAGE_START_PERF : performance.now();
+            let recorded = false;
+
+            const recordInteraction = (type) => {
+                if (recorded || window.METRIKA_INTERACTION_RECORDED) return;
+                recorded = true;
+                window.METRIKA_INTERACTION_RECORDED = true;
+
+                const interactionTime = Math.round(performance.now() - startTime);
+                console.log(`Первое взаимодействие (${type}) через ${interactionTime} мс на странице ${window.METRIKA_CURRENT_PAGE}`);
+                sendEvent('performance_metrics', {
+                    type: 'first_interaction',
+                    interactionType: type,
+                    timeMs: interactionTime,
+                    pageUrl: window.METRIKA_CURRENT_PAGE
+                });
+
+                // Удаляем слушатели после первого срабатывания
+                document.removeEventListener('click', recordClick);
+                window.removeEventListener('scroll', recordScroll);
+            };
+
+            const recordClick = () => recordInteraction('click');
+            const recordScroll = () => recordInteraction('scroll');
+
+            document.addEventListener('click', recordClick);
+            window.addEventListener('scroll', recordScroll);
+        }
+
+        // --- ОБНОВЛЁННАЯ ФУНКЦИЯ logPageView (с инициализацией метрик взаимодействия) ---
+        const originalLogPageView = window.logPageView || function() {};
         window.logPageView = function(url, title) {
+            // Отправка page_exit для предыдущей страницы
             if (window.METRIKA_CURRENT_PAGE) {
                 const timeSpent = Date.now() - window.METRIKA_PAGE_START;
                 sendEvent('page_exits', {
@@ -510,28 +577,42 @@
                 });
             }
 
+            // Сброс для новой страницы
             window.METRIKA_CURRENT_PAGE = url;
             window.METRIKA_PAGE_START = Date.now();
             window.METRIKA_MAX_SCROLL = 0;
-            window.METRIKA_SCROLL_SENT_DEPTHS = {}; // сброс для новой страницы
+            window.METRIKA_SCROLL_SENT_DEPTHS = {};
+            window.METRIKA_INTERACTION_RECORDED = false;
+            window.METRIKA_PAGE_START_PERF = performance.now();
 
+            // Отправка просмотра страницы
             sendEvent('page_views', {
                 url: url,
                 title: title || document.title,
                 referrer: document.referrer || null
             });
+
+            // Настройка отслеживания первого взаимодействия для этой страницы
+            setupFirstInteractionTracking();
+
+            // Вызов оригинальной функции, если она была (для совместимости)
+            if (typeof originalLogPageView === 'function' && originalLogPageView !== window.logPageView) {
+                originalLogPageView(url, title);
+            }
         };
 
-        // Отправляем первый просмотр после загрузки DOM
+        // --- ИНИЦИАЛИЗАЦИЯ ПРИ ПЕРВОЙ ЗАГРУЗКЕ ---
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 window.logPageView(window.location.pathname + window.location.hash, document.title);
+                logPerformanceMetrics(); // только один раз для первой загрузки
             });
         } else {
             window.logPageView(window.location.pathname + window.location.hash, document.title);
+            logPerformanceMetrics();
         }
 
-        // Отслеживание глубины прокрутки с порогами 25,50,75,100
+        // --- ОСТАЛЬНЫЕ СТАНДАРТНЫЕ ОБРАБОТЧИКИ (скролл, клики, beforeunload) ---
         let scrollTimeout;
         window.addEventListener('scroll', function() {
             if (!window.METRIKA_CURRENT_PAGE) return;
@@ -557,7 +638,6 @@
             }, 200);
         });
 
-        // Отслеживание кликов
         document.addEventListener('click', function(e) {
             if (!window.METRIKA_CURRENT_PAGE) return;
             let target = e.target.tagName;
@@ -571,7 +651,6 @@
             });
         });
 
-        // Отслеживание ухода со страницы (закрытие, перезагрузка)
         window.addEventListener('beforeunload', function() {
             if (window.METRIKA_CURRENT_PAGE) {
                 const timeSpent = Date.now() - window.METRIKA_PAGE_START;
@@ -583,7 +662,7 @@
             }
         });
 
-        // Если на странице изначально контент короче окна – сразу фиксируем 100% глубину
+        // Если контент короче окна – фиксируем 100%
         setTimeout(() => {
             const scrollHeight = document.documentElement.scrollHeight;
             const winHeight = window.innerHeight;
