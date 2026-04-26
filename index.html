@@ -645,13 +645,13 @@
     </script>
 
     <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
-   <!-- START_ADMIN -->
+  <!-- START_ADMIN -->
 <script>
 (function() {
     let adminActive = false;
     let originalContent = null;
 
-    // --- Очистка кода сайта от админ-панели (та же, что была) ---
+    // --- Очистка кода сайта от админ-панели ---
     function getCleanSiteCode() {
         const cloneDoc = document.cloneNode(true);
         const scripts = cloneDoc.querySelectorAll('script');
@@ -678,7 +678,7 @@
         return '<!DOCTYPE html>\n' + html;
     }
 
-    // ---------- ЛОГИН И ПАНЕЛЬ УПРАВЛЕНИЯ ----------
+    // --- Функция входа ---
     function showAdminLogin() {
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
         document.getElementById('content').innerHTML = `
@@ -711,6 +711,7 @@
         adminActive = true;
     }
 
+    // --- Админ-панель с тремя кнопками ---
     function showAdminPanel() {
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
@@ -734,7 +735,7 @@
         const statusDiv = document.getElementById('exportStatus');
         const errorDiv = document.getElementById('exportError');
 
-        // --- Общая функция получения метрик из Firestore ---
+        // --- Получение метрик из Firestore ---
         async function fetchMetrics(limit) {
             const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
             let result = {};
@@ -779,7 +780,8 @@
             statusDiv.innerText = 'Загрузка данных...';
             try {
                 const metrics = await fetchMetrics(limit);
-                const blob = new Blob([JSON.stringify(metrics, null, 2)], { type: 'application/json' });
+                const jsonStr = JSON.stringify(metrics, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -833,7 +835,7 @@
             }
         }
 
-        // --- НОВАЯ ФУНКЦИЯ: отправка в LLM (облачный Ollama) ---
+        // --- Отправка в LLM через публичный CORS-прокси ---
         async function sendToLLM() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -858,36 +860,46 @@
                 const siteCode = getCleanSiteCode();
                 const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
 
-                statusDiv.innerText = 'Отправка в LLM...';
-                // Укажите правильный эндпоинт (ниже пример для OpenAI‑совместимого API)
-                const apiUrl = 'https://ollama.com/api/generate';  // замените при необходимости
+                statusDiv.innerText = 'Отправка в LLM через прокси...';
+                // ---------------- НАСТРОЙКИ API ----------------
+                const apiUrl = 'https://ollama.com/api/generate';
                 const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
-                const modelName = 'deepseek-v4-flash:cloud';  // ваша модель
-
-                const response = await fetch(apiUrl, {
+                const modelName = 'deepseek-v4-flash:cloud';
+                
+                // Публичный CORS-прокси (не хранит данные надолго, только передаёт)
+                const proxyUrl = 'https://corsproxy.io/?' + new URLSearchParams({ url: apiUrl });
+                
+                // Формат запроса – совместим с Ollama Generate API
+                const payload = {
+                    model: modelName,
+                    prompt: content,          // для /api/generate используется "prompt"
+                    stream: false
+                };
+                // Если API ожидает "messages" (как в OpenAI), раскомментируйте нужный вариант:
+                // const payload = {
+                //     model: modelName,
+                //     messages: [{ role: 'user', content: content }],
+                //     stream: false
+                // };
+                
+                const response = await fetch(proxyUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${apiKey}`
                     },
-                    body: JSON.stringify({
-                        model: modelName,
-                        messages: [{ role: 'user', content: content }],
-                        stream: false /*,
-                        options: {
-                            num_predict: 100,
-                            ctx_size: 500000
-                       } */
-                    })
+                    body: JSON.stringify(payload)
                 });
                 if (!response.ok) {
-                    let errText = await response.text();
-                    throw new Error(`Ошибка API (${response.status}): ${errText}`);
+                    let errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 const data = await response.json();
-                // Поле с ответом может называться по-разному – подстройте под ваш API
-                const llmAnswer = data.choices?.[0]?.message?.content || data.response || data.result || 'Нет ответа от LLM';
-                
+                // Парсим ответ – для /api/generate используется поле "response"
+                let llmAnswer = data.response || data.result || data.choices?.[0]?.message?.content;
+                if (!llmAnswer) {
+                    llmAnswer = JSON.stringify(data);
+                }
                 // Скачиваем ответ
                 const blob = new Blob([llmAnswer], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
@@ -900,17 +912,18 @@
                 URL.revokeObjectURL(url);
                 statusDiv.innerText = 'Готово! Ответ LLM скачан.';
             } catch (err) {
-                errorDiv.innerText = 'Ошибка при обращении к LLM: ' + err.message;
+                errorDiv.innerText = 'Ошибка: ' + err.message;
                 console.error(err);
             }
         }
 
+        // --- Привязываем кнопки ---
         exportMetricsBtn.addEventListener('click', exportMetricsOnly);
         exportFullBtn.addEventListener('click', exportFullTxt);
         sendToLLMBtn.addEventListener('click', sendToLLM);
     }
 
-    // --- РОУТЕР ДЛЯ АДМИНКИ (перехват #/admin) ---
+    // --- Роутер для админки ---
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         const hash = window.location.hash.slice(1);
