@@ -3,23 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Новостной портал (одностраничный)</title>
+    <title>Новостной портал (плохая версия)</title>
     <style>
+        /* ===== УХУДШЕННЫЕ СТИЛИ ===== */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            background-color: #f4f4f4;
-            color: #333;
+            background-color: #e0e0e0;
+            color: #888; /* низкая контрастность */
         }
         header {
-            background-color: #005f73;
-            color: white;
+            background-color: #8a9ba0;
+            color: #bbb;
             padding: 20px;
             text-align: center;
         }
         nav {
-            background-color: #0a9396;
+            background-color: #a0b3b6;
             padding: 10px;
         }
         nav ul {
@@ -31,24 +32,28 @@
             padding: 0;
         }
         nav a {
-            color: white;
+            color: #ccc;
             text-decoration: none;
             font-weight: bold;
             cursor: pointer;
         }
         nav a:hover {
             text-decoration: underline;
+            color: #ddd;
         }
         main {
             max-width: 1200px;
             margin: 20px auto;
             padding: 20px;
-            background-color: white;
+            background-color: #ddd;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             min-height: 60vh;
         }
+        /* Заголовки как обычный текст */
         h1, h2, h3 {
-            color: #005f73;
+            color: #999;
+            font-size: 1em;
+            font-weight: normal;
         }
         .news-grid {
             display: grid;
@@ -56,64 +61,59 @@
             gap: 20px;
         }
         .news-item {
-            background-color: #e9d8a6;
+            background-color: #ccc;
             padding: 15px;
             border-radius: 8px;
-            transition: transform 0.2s;
-        }
-        .news-item:hover {
-            transform: scale(1.02);
+            /* transition удалена (нет увеличения при наведении) */
         }
         .news-item h3 {
             margin-top: 0;
         }
+        /* Скрываем подписи категорий на главной */
         .category-badge {
-            background-color: #005f73;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            display: inline-block;
+            display: none;
         }
         .news-list article {
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid #aaa;
             padding: 15px 0;
         }
         .news-list article:last-child {
             border-bottom: none;
         }
         .full-article .meta {
-            color: #666;
+            color: #aaa;
             font-style: italic;
         }
         .article-content p {
             line-height: 1.6;
+            color: #888;
         }
+        /* КАРТИНКИ: уменьшенные, по левому краю, без обтекания */
         .article-content img {
-            max-width: 100%;
+            width: 30%;
             height: auto;
             display: block;
-            margin: 20px auto;
+            margin: 20px 0;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
         footer {
-            background-color: #005f73;
-            color: white;
+            background-color: #8a9ba0;
+            color: #bbb;
             text-align: center;
             padding: 10px;
             margin-top: 20px;
         }
         a {
-            color: #005f73;
+            color: #aaa;
             cursor: pointer;
             text-decoration: none;
         }
         a:hover {
-            color: #0a9396;
+            color: #ccc;
             text-decoration: underline;
         }
-        /* Стили админ-панели */
+        /* Стили админ-панели (оставляем как в хорошей версии) */
         .admin-container {
             max-width: 800px;
             margin: 50px auto;
@@ -165,7 +165,7 @@
 </head>
 <body>
     <header>
-        <h1>Новостной портал</h1>
+        <h1>Новостной портал (плохая версия)</h1>
         <p>Все новости в одном месте</p>
     </header>
     <nav>
@@ -182,13 +182,13 @@
         <!-- Сюда подставляется контент -->
     </main>
     <footer>
-        <p>&copy; 2025 Новостной портал. Учебный проект.</p>
+        <p>&copy; 2025 Новостной портал. Учебный проект (плохая версия).</p>
     </footer>
 
-    <!-- ========== ОСНОВНОЙ СКРИПТ САЙТА ========== -->
+    <!-- ========== ОСНОВНОЙ СКРИПТ САЙТА (РОУТИНГ, ДАННЫЕ, РЕНДЕРЫ) ========== -->
     <script>
         (function() {
-            // ---------- ДАННЫЕ САЙТА (статьи) ----------
+            // ---------- ДАННЫЕ САЙТА (полные статьи, такие же как в хорошей версии) ----------
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -197,7 +197,6 @@
                 { id: 'culture', name: 'Культура' }
             ];
 
-            // ПОЛНЫЕ СТАТЬИ (все 10)
             const articles = [
                 // Политика 1
                 {
@@ -410,7 +409,7 @@
                 return cat ? cat.name : categoryId;
             }
 
-            // ---------- РЕНДЕРЫ ----------
+            // ---------- РЕНДЕРЫ (УХУДШЕННЫЕ) ----------
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -419,7 +418,7 @@
                         <div class="news-item">
                             <h3><a href="#/article/${article.id}">${article.title}</a></h3>
                             <p>${article.content.replace(/<[^>]+>/g, '').substring(0, 100)}...</p>
-                            <span class="category-badge">${getCategoryName(article.category)}</span>
+                            <!-- категория скрыта CSS -->
                         </div>
                     `;
                 });
@@ -456,12 +455,13 @@
                 }
                 const catName = getCategoryName(article.category);
                 const fixedContent = fixImagePaths(article.content);
+                // Пункт 1: категория без ссылки
+                // Пункт 2: нет ссылок возврата
                 const html = `
                     <article class="full-article">
                         <h2>${article.title}</h2>
-                        <p class="meta">Категория: <a href="#/category/${article.category}">${catName}</a> | Дата: ${article.date}</p>
+                        <p class="meta">Категория: ${catName} | Дата: ${article.date}</p>
                         <div class="article-content">${fixedContent}</div>
-                        <p><a href="#/category/${article.category}">← Назад к ${catName}</a> | <a href="#/">На главную</a></p>
                     </article>
                 `;
                 document.getElementById('content').innerHTML = html;
@@ -499,7 +499,7 @@
         })();
     </script>
 
-    <!-- ========== FIREBASE SDK И МЕТРИКИ ========== -->
+    <!-- ========== FIREBASE SDK И МЕТРИКИ (те же, что в хорошей версии) ========== -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 
@@ -643,8 +643,10 @@
             }
         }, 500);
     </script>
-   <!-- START_ADMIN -->
-<script>
+
+    <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
+    <!-- START_ADMIN -->
+    <script>
 (function() {
     let adminActive = false;
     let originalContent = null;
