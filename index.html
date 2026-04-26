@@ -645,28 +645,32 @@
     </script>
 
     <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
-    <!-- START_ADMIN -->
+   <!-- START_ADMIN -->
 <script>
     (function() {
         let adminActive = false;
         let originalContent = null;
 
-        // Функция для красивого форматирования HTML (с отступами и переносами строк)
-        function prettyPrintHtml(html) {
-            // Используем DOMParser для создания DOM-дерева, затем сериализуем с отступами
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            // Преобразуем обратно в строку с отступами (2 пробела)
-            const serializer = new XMLSerializer();
-            let formatted = serializer.serializeToString(doc);
-            // Добавим символ новой строки после каждого закрывающего тега, чтобы не было слитно
-            formatted = formatted.replace(/>\s*</g, '>\n<');
-            // Удаляем лишние пустые строки (необязательно)
-            formatted = formatted.replace(/\n\s*\n/g, '\n');
-            return formatted;
+        // Функция для получения чистого HTML без админ-панели
+        async function getCleanSiteCode() {
+            const response = await fetch(window.location.href);
+            let html = await response.text();
+            // Удаляем блок от <!-- START_ADMIN --> до <!-- END_ADMIN --> включительно
+            const startMarker = '<!-- START_ADMIN -->';
+            const endMarker = '<!-- END_ADMIN -->';
+            let startIndex = html.indexOf(startMarker);
+            if (startIndex !== -1) {
+                let endIndex = html.indexOf(endMarker, startIndex);
+                if (endIndex !== -1) {
+                    html = html.slice(0, startIndex) + html.slice(endIndex + endMarker.length);
+                }
+            }
+            // Убираем лишние пустые строки после удаления
+            html = html.replace(/\n\s*\n/g, '\n');
+            return html;
         }
 
-        // Удаление событий, связанных с админ-панелью (по URL)
+        // Фильтрация событий админ-панели
         function filterAdminEvents(data) {
             const filtered = {};
             for (const [collection, records] of Object.entries(data)) {
@@ -743,10 +747,54 @@
             const statusDiv = document.getElementById('exportStatus');
             const errorDiv = document.getElementById('exportError');
 
-            async function exportData(includeSiteCode = false) {
+            // Общая функция загрузки данных из Firestore (без фильтрации по лимиту)
+            async function fetchMetrics() {
+                const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
+                let result = {};
+                for (const col of collections) {
+                    const snapshot = await db.collection(col).get();
+                    const docs = [];
+                    snapshot.forEach(doc => {
+                        let data = doc.data();
+                        if (data.userAgent) delete data.userAgent;
+                        if (data.timestamp && data.timestamp.toDate) {
+                            data.timestamp = data.timestamp.toDate().toISOString();
+                        }
+                        docs.push({ id: doc.id, ...data });
+                    });
+                    docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+                    // Фильтруем админ-события
+                    const filtered = docs.filter(record => {
+                        const urls = [record.pageUrl, record.url, record.fromPage];
+                        for (let u of urls) {
+                            if (u && (u.includes('#/admin') || u.includes('/admin'))) {
+                                return false;
+                            }
+                        }
+                        return true;
+                    });
+                    // Применяем лимит, если задан
+                    let limit = null;
+                    const limitRaw = limitInput.value.trim();
+                    if (limitRaw !== '') {
+                        if (/^\d+$/.test(limitRaw)) {
+                            limit = parseInt(limitRaw, 10);
+                            if (limit <= 0) limit = null;
+                        }
+                    }
+                    if (limit && limit > 0) {
+                        result[col] = filtered.slice(-limit);
+                    } else {
+                        result[col] = filtered;
+                    }
+                }
+                return result;
+            }
+
+            async function exportMetricsOnly() {
                 statusDiv.innerText = '';
                 errorDiv.innerText = '';
-                let limit = null;
+                // Валидация лимита (только цифры)
                 const limitRaw = limitInput.value.trim();
                 if (limitRaw !== '') {
                     if (!/^\d+$/.test(limitRaw)) {
@@ -754,80 +802,74 @@
                         limitInput.value = '';
                         return;
                     }
-                    limit = parseInt(limitRaw, 10);
+                    const limit = parseInt(limitRaw, 10);
                     if (limit <= 0) {
                         errorDiv.innerText = 'Ошибка: лимит должен быть больше 0.';
                         limitInput.value = '';
                         return;
                     }
                 }
-                statusDiv.innerText = 'Загрузка данных из Firestore...';
-                const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
-                let result = {};
+                statusDiv.innerText = 'Загрузка данных...';
                 try {
-                    for (const col of collections) {
-                        const snapshot = await db.collection(col).get();
-                        const docs = [];
-                        snapshot.forEach(doc => {
-                            let data = doc.data();
-                            if (data.userAgent) delete data.userAgent;
-                            if (data.timestamp && data.timestamp.toDate) {
-                                data.timestamp = data.timestamp.toDate().toISOString();
-                            }
-                            docs.push({ id: doc.id, ...data });
-                        });
-                        // Сортировка по времени (старые → новые)
-                        docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-                        // Фильтруем админ-события
-                        const filtered = docs.filter(record => {
-                            const urls = [record.pageUrl, record.url, record.fromPage];
-                            for (let u of urls) {
-                                if (u && (u.includes('#/admin') || u.includes('/admin'))) {
-                                    return false;
-                                }
-                            }
-                            return true;
-                        });
-                        // Обрезаем до лимита (последние N)
-                        if (limit && limit > 0) {
-                            result[col] = filtered.slice(-limit);
-                        } else {
-                            result[col] = filtered;
-                        }
-                    }
-                    
-                    if (includeSiteCode) {
-                        const rawCode = await getCleanSiteCode();
-                        result.site_code = prettyPrintHtml(rawCode);
-                    }
-                    const jsonStr = JSON.stringify(result, null, 2);
+                    const metrics = await fetchMetrics();
+                    const jsonStr = JSON.stringify(metrics, null, 2);
                     const blob = new Blob([jsonStr], { type: 'application/json' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = includeSiteCode ? 'full_export_with_code.json' : 'metrics_export.json';
+                    a.download = 'metrics_export.json';
                     document.body.appendChild(a);
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                    statusDiv.innerText = 'Готово! Файл скачан.';
+                    statusDiv.innerText = 'Готово! Файл метрик скачан.';
                 } catch (err) {
-                    console.error(err);
-                    errorDiv.innerText = 'Ошибка при экспорте: ' + err.message;
+                    errorDiv.innerText = 'Ошибка: ' + err.message;
                 }
             }
 
-            exportMetricsBtn.addEventListener('click', () => exportData(false));
-            exportFullBtn.addEventListener('click', () => exportData(true));
-        }
+            async function exportFullTxt() {
+                statusDiv.innerText = '';
+                errorDiv.innerText = '';
+                // Валидация лимита
+                const limitRaw = limitInput.value.trim();
+                if (limitRaw !== '') {
+                    if (!/^\d+$/.test(limitRaw)) {
+                        errorDiv.innerText = 'Ошибка: в поле лимита должны быть только цифры (целое положительное число).';
+                        limitInput.value = '';
+                        return;
+                    }
+                    const limit = parseInt(limitRaw, 10);
+                    if (limit <= 0) {
+                        errorDiv.innerText = 'Ошибка: лимит должен быть больше 0.';
+                        limitInput.value = '';
+                        return;
+                    }
+                }
+                statusDiv.innerText = 'Загрузка метрик и кода сайта...';
+                try {
+                    const metrics = await fetchMetrics();
+                    const metricsJson = JSON.stringify(metrics, null, 2);
+                    const siteCode = await getCleanSiteCode();
+                    
+                    const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+                    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'full_export.txt';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    statusDiv.innerText = 'Готово! Файл с метриками и кодом скачан.';
+                } catch (err) {
+                    errorDiv.innerText = 'Ошибка: ' + err.message;
+                }
+            }
 
-        // Функция получения чистого кода сайта (удаляет блок между START_ADMIN и END_ADMIN)
-        async function getCleanSiteCode() {
-            const response = await fetch(window.location.href);
-            let html = await response.text();
-            // Удаляем всё от <!-- START_ADMIN --> до <!-- END_ADMIN -->, включая возможные пробелы и переводы строк
-            html = html.replace(/<!--\s*START_ADMIN\s*-->[\s\S]*?<!--\s*END_ADMIN\s*-->/gi, '');
-            return html;
+            exportMetricsBtn.addEventListener('click', exportMetricsOnly);
+            exportFullBtn.addEventListener('click', exportFullTxt);
         }
 
         // Переопределяем роутер для поддержки админки
