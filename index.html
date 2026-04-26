@@ -645,17 +645,15 @@
     </script>
 
     <!-- ========== АДМИН-ПАНЕЛЬ (обёрнута в маркеры для удаления при экспорте) ========== -->
-    <!-- START_ADMIN -->
-    <script>
+   <!-- START_ADMIN -->
+<script>
 (function() {
     let adminActive = false;
     let originalContent = null;
 
-    // --- НАДЁЖНОЕ ПОЛУЧЕНИЕ ЧИСТОГО КОДА (БЕЗ АДМИН-ПАНЕЛИ) ---
+    // --- Очистка кода сайта от админ-панели (та же, что была) ---
     function getCleanSiteCode() {
         const cloneDoc = document.cloneNode(true);
-        
-        // 1. Удаляем скрипты с админ-логикой
         const scripts = cloneDoc.querySelectorAll('script');
         for (let script of scripts) {
             if (script.textContent.includes('START_ADMIN') || 
@@ -665,28 +663,22 @@
                 script.remove();
             }
         }
-        
-        // 2. Удаляем элементы с классом admin-container
         const adminContainers = cloneDoc.querySelectorAll('.admin-container');
         adminContainers.forEach(el => el.remove());
-        
-        // 3. Удаляем стили, связанные с админ-панелью
         const styleNodes = cloneDoc.querySelectorAll('style');
         for (let style of styleNodes) {
             if (style.textContent.includes('.admin-container')) {
                 style.remove();
             }
         }
-        
         let html = cloneDoc.documentElement.outerHTML;
-        // 4. Удаляем оставшиеся комментарии-маркеры
         html = html.replace(/<!-- START_ADMIN -->/g, '');
         html = html.replace(/<!-- END_ADMIN -->/g, '');
-        // 5. Убираем лишние пустые строки
         html = html.replace(/\n\s*\n/g, '\n');
         return '<!DOCTYPE html>\n' + html;
     }
 
+    // ---------- ЛОГИН И ПАНЕЛЬ УПРАВЛЕНИЯ ----------
     function showAdminLogin() {
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
         document.getElementById('content').innerHTML = `
@@ -728,17 +720,21 @@
                 <div style="margin-top: 20px;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="exportFullBtn">Получить полный файл для анализа</button>
+                    <button id="sendToLLMBtn" style="background-color: #6c757d;">Отправить в LLM</button>
                 </div>
                 <div id="exportStatus" class="success"></div>
                 <div id="exportError" class="error"></div>
             </div>
         `;
+
         const limitInput = document.getElementById('limitInput');
         const exportMetricsBtn = document.getElementById('exportMetricsBtn');
         const exportFullBtn = document.getElementById('exportFullBtn');
+        const sendToLLMBtn = document.getElementById('sendToLLMBtn');
         const statusDiv = document.getElementById('exportStatus');
         const errorDiv = document.getElementById('exportError');
 
+        // --- Общая функция получения метрик из Firestore ---
         async function fetchMetrics(limit) {
             const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
             let result = {};
@@ -762,6 +758,7 @@
             return result;
         }
 
+        // --- Экспорт только метрик (JSON) ---
         async function exportMetricsOnly() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -797,6 +794,7 @@
             }
         }
 
+        // --- Экспорт полного файла (метрики + код) ---
         async function exportFullTxt() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -818,7 +816,7 @@
             try {
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
-                const siteCode = getCleanSiteCode(); // теперь чистая
+                const siteCode = getCleanSiteCode();
                 const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
                 const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
@@ -835,10 +833,80 @@
             }
         }
 
+        // --- НОВАЯ ФУНКЦИЯ: отправка в LLM (облачный Ollama) ---
+        async function sendToLLM() {
+            errorDiv.innerText = '';
+            const limitRaw = limitInput.value.trim();
+            let limit = null;
+            if (limitRaw !== '') {
+                if (!/^\d+$/.test(limitRaw)) {
+                    errorDiv.innerText = 'Ошибка: введите целое положительное число.';
+                    limitInput.value = '';
+                    return;
+                }
+                limit = parseInt(limitRaw, 10);
+                if (limit <= 0) {
+                    errorDiv.innerText = 'Ошибка: число должно быть больше 0.';
+                    limitInput.value = '';
+                    return;
+                }
+            }
+            statusDiv.innerText = 'Подготовка данных для LLM...';
+            try {
+                const metrics = await fetchMetrics(limit);
+                const metricsJson = JSON.stringify(metrics, null, 2);
+                const siteCode = getCleanSiteCode();
+                const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+
+                statusDiv.innerText = 'Отправка в LLM...';
+                // Укажите правильный эндпоинт (ниже пример для OpenAI‑совместимого API)
+                const apiUrl = 'https://api.ollama.ai/v1/chat/completions';  // замените при необходимости
+                const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
+                const modelName = 'deepseek-v4-flash:cloud';  // ваша модель
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: modelName,
+                        messages: [{ role: 'user', content: content }],
+                        stream: false
+                    })
+                });
+                if (!response.ok) {
+                    let errText = await response.text();
+                    throw new Error(`Ошибка API (${response.status}): ${errText}`);
+                }
+                const data = await response.json();
+                // Поле с ответом может называться по-разному – подстройте под ваш API
+                const llmAnswer = data.choices?.[0]?.message?.content || data.response || data.result || 'Нет ответа от LLM';
+                
+                // Скачиваем ответ
+                const blob = new Blob([llmAnswer], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'llm_response.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusDiv.innerText = 'Готово! Ответ LLM скачан.';
+            } catch (err) {
+                errorDiv.innerText = 'Ошибка при обращении к LLM: ' + err.message;
+                console.error(err);
+            }
+        }
+
         exportMetricsBtn.addEventListener('click', exportMetricsOnly);
         exportFullBtn.addEventListener('click', exportFullTxt);
+        sendToLLMBtn.addEventListener('click', sendToLLM);
     }
 
+    // --- РОУТЕР ДЛЯ АДМИНКИ (перехват #/admin) ---
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         const hash = window.location.hash.slice(1);
