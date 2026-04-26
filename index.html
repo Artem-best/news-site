@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Новостной портал (одностраничный)</title>
     <style>
-        /* Все ваши стили остаются без изменений */
         body {
             font-family: Arial, sans-serif;
             margin: 0;
@@ -150,7 +149,7 @@
 
     <script>
         (function() {
-            // ===== Данные сайта (те же самые, что и раньше) =====
+            // ===== Данные сайта (полные статьи с картинками) =====
             const categories = [
                 { id: 'politics', name: 'Политика' },
                 { id: 'sport', name: 'Спорт' },
@@ -352,10 +351,9 @@
                 }
             ];
 
-            // ===== Определяем базовый путь для картинок (корень репозитория) =====
+            // ===== Определяем базовый путь для картинок =====
             function getBasePath() {
                 let path = window.location.pathname;
-                // Удаляем возможный index.html из конца
                 if (path.endsWith('/index.html')) path = path.slice(0, -10);
                 if (path.endsWith('.html')) path = path.slice(0, -5);
                 if (!path.endsWith('/')) path += '/';
@@ -363,19 +361,16 @@
             }
             const BASE_PATH = getBasePath();
 
-            // ===== Функция для исправления путей картинок =====
             function fixImagePaths(htmlContent) {
-                // Заменяет src="filename.jpg" на src="/BASE_PATH/filename.jpg"
                 return htmlContent.replace(/src="(?!https?:\/\/|\/\/|\/)([^"]+)"/g, `src="${BASE_PATH}$1"`);
             }
 
-            // ===== Вспомогательные функции =====
             function getCategoryName(categoryId) {
                 const cat = categories.find(c => c.id === categoryId);
                 return cat ? cat.name : categoryId;
             }
 
-            // ===== Рендер главной =====
+            // ===== Рендеры =====
             function renderHome() {
                 const latest = articles.slice(0, 5);
                 let html = '<section class="latest-news"><h2>Последние новости</h2><div class="news-grid">';
@@ -392,7 +387,6 @@
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Рендер категории =====
             function renderCategory(categoryId) {
                 const catName = getCategoryName(categoryId);
                 const catArticles = articles.filter(a => a.category === categoryId);
@@ -414,7 +408,6 @@
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Рендер статьи =====
             function renderArticle(articleId) {
                 const article = articles.find(a => a.id === articleId);
                 if (!article) {
@@ -434,9 +427,9 @@
                 document.getElementById('content').innerHTML = html;
             }
 
-            // ===== Роутер на основе хэша =====
+            // ===== Роутер на хэшах =====
             function router() {
-                let hash = window.location.hash.slice(1); // убираем #
+                let hash = window.location.hash.slice(1);
                 if (hash === '' || hash === '/') {
                     renderHome();
                 } else if (hash.startsWith('/category/')) {
@@ -446,21 +439,161 @@
                     const articleId = hash.replace('/article/', '');
                     renderArticle(articleId);
                 } else {
-                    // Неизвестный хэш — показываем 404
                     document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a href="#/">Вернуться на главную</a></p>';
                 }
 
-                // Отправка виртуального хита в Яндекс.Метрику (если нужно)
+                // Отправка виртуального хита в Яндекс.Метрику
                 if (typeof ym !== 'undefined') {
                     ym(90000000, 'hit', window.location.pathname + window.location.hash);
                 }
+
+                // Отправка просмотра страницы в Firebase
+                if (typeof window.logPageView === 'function') {
+                    setTimeout(() => {
+                        window.logPageView(window.location.pathname + window.location.hash, document.title);
+                    }, 50);
+                }
             }
 
-            // ===== Обработчик изменения хэша =====
             window.addEventListener('hashchange', router);
-            // Первоначальный запуск роутера
             window.addEventListener('DOMContentLoaded', router);
         })();
     </script>
+
+    <!-- ========== FIREBASE SDK И МЕТРИКИ ========== -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
+    <script>
+        // 1. Инициализация Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyDa6GmDe9lSemMBONkznX3VbbW_mG1uYGw",
+            authDomain: "news-metrics-1a432.firebaseapp.com",
+            projectId: "news-metrics-1a432",
+            storageBucket: "news-metrics-1a432.firebasestorage.app",
+            messagingSenderId: "1001069127753",
+            appId: "1:1001069127753:web:5a2b210ce8a36d54a2b798",
+            measurementId: "G-MPDWPDFT9Y"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+
+        async function sendEvent(collection, data) {
+            try {
+                await db.collection(collection).add({
+                    ...data,
+                    sessionId: window.METRIKA_SESSION_ID,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+                    userAgent: navigator.userAgent,
+                    pageUrl: window.location.pathname + window.location.hash
+                });
+            } catch (e) {
+                console.warn('Firestore error', e);
+            }
+        }
+
+        // Глобальные переменные для сессии
+        window.METRIKA_SESSION_ID = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        window.METRIKA_CURRENT_PAGE = null;
+        window.METRIKA_PAGE_START = null;
+        window.METRIKA_MAX_SCROLL = 0;
+        window.METRIKA_SCROLL_SENT_DEPTHS = {}; // для отправки каждого порога только один раз
+
+        // Логирование просмотра страницы
+        window.logPageView = function(url, title) {
+            if (window.METRIKA_CURRENT_PAGE) {
+                const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+                sendEvent('page_exits', {
+                    fromPage: window.METRIKA_CURRENT_PAGE,
+                    timeSpentMs: timeSpent,
+                    maxScroll: window.METRIKA_MAX_SCROLL
+                });
+            }
+
+            window.METRIKA_CURRENT_PAGE = url;
+            window.METRIKA_PAGE_START = Date.now();
+            window.METRIKA_MAX_SCROLL = 0;
+            window.METRIKA_SCROLL_SENT_DEPTHS = {}; // сброс для новой страницы
+
+            sendEvent('page_views', {
+                url: url,
+                title: title || document.title,
+                referrer: document.referrer || null
+            });
+        };
+
+        // Отправляем первый просмотр после загрузки DOM
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                window.logPageView(window.location.pathname + window.location.hash, document.title);
+            });
+        } else {
+            window.logPageView(window.location.pathname + window.location.hash, document.title);
+        }
+
+        // Отслеживание глубины прокрутки с порогами 25,50,75,100
+        let scrollTimeout;
+        window.addEventListener('scroll', function() {
+            if (!window.METRIKA_CURRENT_PAGE) return;
+            clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(function() {
+                const scrollHeight = document.documentElement.scrollHeight;
+                const winHeight = window.innerHeight;
+                const scrollTop = window.scrollY;
+                let percent = Math.round((scrollTop + winHeight) / scrollHeight * 100);
+                percent = Math.min(100, percent);
+                
+                const thresholds = [25, 50, 75, 100];
+                for (let t of thresholds) {
+                    if (percent >= t && !window.METRIKA_SCROLL_SENT_DEPTHS[t]) {
+                        window.METRIKA_SCROLL_SENT_DEPTHS[t] = true;
+                        sendEvent('scroll_depth', { depth: t });
+                    }
+                }
+                
+                if (percent > window.METRIKA_MAX_SCROLL) {
+                    window.METRIKA_MAX_SCROLL = percent;
+                }
+            }, 200);
+        });
+
+        // Отслеживание кликов
+        document.addEventListener('click', function(e) {
+            if (!window.METRIKA_CURRENT_PAGE) return;
+            let target = e.target.tagName;
+            if (e.target.id) target += '#' + e.target.id;
+            if (e.target.className && typeof e.target.className === 'string') target += '.' + e.target.className;
+            else if (e.target.classList && e.target.classList.length) target += '.' + Array.from(e.target.classList).join('.');
+            sendEvent('clicks', {
+                x: e.clientX,
+                y: e.clientY,
+                target: target
+            });
+        });
+
+        // Отслеживание ухода со страницы (закрытие, перезагрузка)
+        window.addEventListener('beforeunload', function() {
+            if (window.METRIKA_CURRENT_PAGE) {
+                const timeSpent = Date.now() - window.METRIKA_PAGE_START;
+                sendEvent('page_exits', {
+                    fromPage: window.METRIKA_CURRENT_PAGE,
+                    timeSpentMs: timeSpent,
+                    maxScroll: window.METRIKA_MAX_SCROLL
+                });
+            }
+        });
+
+        // Если на странице изначально контент короче окна – сразу фиксируем 100% глубину
+        setTimeout(() => {
+            const scrollHeight = document.documentElement.scrollHeight;
+            const winHeight = window.innerHeight;
+            if (scrollHeight <= winHeight && !window.METRIKA_SCROLL_SENT_DEPTHS[100]) {
+                window.METRIKA_SCROLL_SENT_DEPTHS[100] = true;
+                if (window.METRIKA_MAX_SCROLL < 100) window.METRIKA_MAX_SCROLL = 100;
+                sendEvent('scroll_depth', { depth: 100 });
+            }
+        }, 500);
+    </script>
+    <!-- ========== КОНЕЦ FIREBASE МЕТРИКИ ========== -->
 </body>
 </html>
