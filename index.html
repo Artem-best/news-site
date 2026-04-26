@@ -860,7 +860,7 @@
 
                 statusDiv.innerText = 'Отправка в LLM...';
                 // Укажите правильный эндпоинт (ниже пример для OpenAI‑совместимого API)
-                const apiUrl = 'https://ollama.com/api/chat';  // замените при необходимости
+                const apiUrl = 'https://ollama.com/api/generate';  // замените при необходимости
                 const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
                 const modelName = 'deepseek-v4-flash:cloud';  // ваша модель
 
@@ -873,7 +873,11 @@
                     body: JSON.stringify({
                         model: modelName,
                         messages: [{ role: 'user', content: content }],
-                        stream: false
+                        stream: false /*,
+                        options: {
+                            num_predict: 100,
+                            ctx_size: 500000
+                       } */
                     })
                 });
                 if (!response.ok) {
