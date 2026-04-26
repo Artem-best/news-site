@@ -651,6 +651,7 @@
     let adminActive = false;
     let originalContent = null;
 
+    // --- Очистка кода сайта от админ-панели ---
     function getCleanSiteCode() {
         const cloneDoc = document.cloneNode(true);
         const scripts = cloneDoc.querySelectorAll('script');
@@ -666,8 +667,9 @@
         adminContainers.forEach(el => el.remove());
         const styleNodes = cloneDoc.querySelectorAll('style');
         for (let style of styleNodes) {
-            if (style.textContent.includes('.admin-container'))
+            if (style.textContent.includes('.admin-container')) {
                 style.remove();
+            }
         }
         let html = cloneDoc.documentElement.outerHTML;
         html = html.replace(/<!-- START_ADMIN -->/g, '');
@@ -676,6 +678,7 @@
         return '<!DOCTYPE html>\n' + html;
     }
 
+    // --- Логин ---
     function showAdminLogin() {
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
         document.getElementById('content').innerHTML = `
@@ -708,6 +711,7 @@
         adminActive = true;
     }
 
+    // --- Получение метрик из Firestore ---
     async function fetchMetrics(limit) {
         const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
         let result = {};
@@ -731,6 +735,7 @@
         return result;
     }
 
+    // --- Админ-панель с тремя кнопками ---
     function showAdminPanel() {
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
@@ -746,6 +751,7 @@
                 <div id="exportError" class="error"></div>
             </div>
         `;
+
         const limitInput = document.getElementById('limitInput');
         const exportMetricsBtn = document.getElementById('exportMetricsBtn');
         const exportFullBtn = document.getElementById('exportFullBtn');
@@ -753,6 +759,7 @@
         const statusDiv = document.getElementById('exportStatus');
         const errorDiv = document.getElementById('exportError');
 
+        // --- Экспорт только метрик (JSON) ---
         async function exportMetricsOnly() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -782,12 +789,13 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                statusDiv.innerText = 'Готово!';
+                statusDiv.innerText = 'Готово! Файл метрик скачан.';
             } catch (err) {
                 errorDiv.innerText = 'Ошибка: ' + err.message;
             }
         }
 
+        // --- Экспорт полного файла (метрики + код) ---
         async function exportFullTxt() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -805,7 +813,7 @@
                     return;
                 }
             }
-            statusDiv.innerText = 'Загрузка...';
+            statusDiv.innerText = 'Загрузка метрик и кода...';
             try {
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
@@ -820,12 +828,13 @@
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-                statusDiv.innerText = 'Готово!';
+                statusDiv.innerText = 'Готово! Файл с метриками и кодом скачан.';
             } catch (err) {
                 errorDiv.innerText = 'Ошибка: ' + err.message;
             }
         }
 
+        // --- Отправка в LLM через публичный CORS-прокси (без активации) ---
         async function sendToLLM() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -843,36 +852,39 @@
                     return;
                 }
             }
-            statusDiv.innerText = 'Подготовка данных...';
+            statusDiv.innerText = 'Подготовка данных для LLM...';
             try {
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
                 const siteCode = getCleanSiteCode();
                 const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
 
-                statusDiv.innerText = 'Отправка в LLM...';
-                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                statusDiv.innerText = 'Отправка в LLM (через прокси)...';
+                // Прокси, не требующий активации
+                const proxyUrl = 'https://cors.x2u.in/';
                 const targetApi = 'https://ollama.com/api/generate';
-                
+                const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
+                const modelName = 'deepseek-v3.1';
+
                 const response = await fetch(proxyUrl + targetApi, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Origin': window.location.origin,
-                        'X-Requested-With': 'XMLHttpRequest'
+                        'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: 'deepseek-v4-flash:cloud',
+                        model: modelName,
                         prompt: content,
                         stream: false
                     })
                 });
                 if (!response.ok) {
-                    let errText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errText}`);
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 const data = await response.json();
                 const llmAnswer = data.response || JSON.stringify(data);
+                // Скачиваем ответ
                 const blob = new Blob([llmAnswer], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -894,6 +906,7 @@
         sendToLLMBtn.addEventListener('click', sendToLLM);
     }
 
+    // --- Роутер для админки (перехват #/admin) ---
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         const hash = window.location.hash.slice(1);
