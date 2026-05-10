@@ -49,6 +49,7 @@
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             min-height: 60vh;
         }
+        /* Заголовки как обычный текст */
         h1, h2, h3 {
             color: #999;
             font-size: 1em;
@@ -109,7 +110,7 @@
             color: #ccc;
             text-decoration: underline;
         }
-        /* Стили админ-панели (оставляем как в хорошей версии) */
+        /* Стили админ-панели */
         .admin-container {
             max-width: 800px;
             margin: 50px auto;
@@ -151,23 +152,27 @@
         .success {
             color: green;
         }
-        /* Стили для дерева выбора страниц */
+        /* Стили для дерева выбора страниц (исправленные) */
         .pages-tree label {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 8px;
+            text-align: left;
+            justify-content: flex-start;
+            margin-bottom: 2px;
             cursor: pointer;
         }
         .pages-tree input {
             margin: 0;
+            flex-shrink: 0;
+        }
+        .pages-tree .category-group {
+            margin-top: 8px;
+        }
+        .pages-tree .subitems {
+            margin-left: 24px;
         }
     </style>
-    <!-- Yandex.Metrika counter (замените 90000000 на реальный номер) -->
-    <script type="text/javascript" >
-        (function(m,e,t,r,i,k,a){m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)}; m[i].l=1*new Date(); for (var j = 0; j < document.scripts.length; j++) {if (document.scripts[j].src === r) { return; }} k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)}) (window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym"); ym(90000000, "init", { clickmap:true, trackLinks:true, accurateTrackBounce:true, webvisor:true });
-    </script>
-    <noscript><div><img src="https://mc.yandex.ru/watch/90000000" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
-    <!-- /Yandex.Metrika counter -->
 </head>
 <body>
     <header>
@@ -184,11 +189,9 @@
             <li><a href="#/category/culture">Культура</a></li>
         </ul>
     </nav>
-    <main id="content">
-        <!-- Сюда подставляется контент -->
-    </main>
+    <main id="content"></main>
     <footer>
-        <p>&copy; 2025 Новостной портал. Учебный проект (плохая версия).</p>
+        <p>© 2025 Новостной портал. Учебный проект (плохая версия).</p>
     </footer>
 
     <!-- ========== ОСНОВНОЙ СКРИПТ САЙТА (РОУТИНГ, ДАННЫЕ, РЕНДЕРЫ) ========== -->
@@ -485,10 +488,6 @@
                     document.getElementById('content').innerHTML = '<h2>404 - Страница не найдена</h2><p><a href="#/">Вернуться на главную</a></p>';
                 }
 
-                if (typeof ym !== 'undefined') {
-                    ym(90000000, 'hit', window.location.pathname + window.location.hash);
-                }
-
                 if (typeof window.logPageView === 'function') {
                     setTimeout(() => {
                         window.logPageView(window.location.pathname + window.location.hash, document.title);
@@ -518,7 +517,11 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
+        // Флаг для временного отключения отправки метрик (используется при захвате страниц)
+        window.METRIKA_DISABLED = false;
+
         async function sendEvent(collection, data) {
+            if (window.METRIKA_DISABLED) return; // не отправляем, если захватываем страницу
             try {
                 await db.collection(collection).add({
                     ...data,
@@ -577,6 +580,7 @@
         }
 
         window.logPageView = function(url, title) {
+            if (window.METRIKA_DISABLED) return; // не логируем просмотры при захвате
             if (window.METRIKA_CURRENT_PAGE) {
                 const timeSpent = Date.now() - window.METRIKA_PAGE_START;
                 sendEvent('page_exits', { fromPage: window.METRIKA_CURRENT_PAGE, timeSpentMs: timeSpent, maxScroll: window.METRIKA_MAX_SCROLL });
@@ -603,6 +607,7 @@
 
         let scrollTimeout;
         window.addEventListener('scroll', function() {
+            if (window.METRIKA_DISABLED) return;
             if (!window.METRIKA_CURRENT_PAGE) return;
             clearTimeout(scrollTimeout);
             scrollTimeout = setTimeout(function() {
@@ -622,6 +627,7 @@
         });
 
         document.addEventListener('click', function(e) {
+            if (window.METRIKA_DISABLED) return;
             if (!window.METRIKA_CURRENT_PAGE) return;
             let target = e.target.tagName;
             if (e.target.id) target += '#' + e.target.id;
@@ -631,12 +637,14 @@
         });
 
         window.addEventListener('beforeunload', function() {
+            if (window.METRIKA_DISABLED) return;
             if (window.METRIKA_CURRENT_PAGE) {
                 sendEvent('page_exits', { fromPage: window.METRIKA_CURRENT_PAGE, timeSpentMs: Date.now() - window.METRIKA_PAGE_START, maxScroll: window.METRIKA_MAX_SCROLL });
             }
         });
 
         setTimeout(() => {
+            if (window.METRIKA_DISABLED) return;
             if (document.documentElement.scrollHeight <= window.innerHeight && !window.METRIKA_SCROLL_SENT_DEPTHS[100]) {
                 window.METRIKA_SCROLL_SENT_DEPTHS[100] = true;
                 if (window.METRIKA_MAX_SCROLL < 100) window.METRIKA_MAX_SCROLL = 100;
@@ -689,11 +697,15 @@
 
         async function captureDomByHash(hash) {
             const originalHash = window.location.hash;
+            // Отключаем отправку метрик на время захвата
+            window.METRIKA_DISABLED = true;
             window.location.hash = hash;
-            await new Promise(resolve => setTimeout(resolve, 400));
+            // Увеличиваем задержку для полной отрисовки (можно подстроить)
+            await new Promise(resolve => setTimeout(resolve, 1000));
             const dom = captureCurrentDom();
             window.location.hash = originalHash;
             await new Promise(resolve => setTimeout(resolve, 100));
+            window.METRIKA_DISABLED = false;
             return dom;
         }
 
@@ -724,12 +736,14 @@
         function buildPagesTree() {
             const { pages, categories, articles } = getAllPages();
             let html = `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">`;
+            // Главная
             html += `<div style="margin-bottom: 6px;"><label><input type="checkbox" class="page-checkbox" data-hash="#/" style="margin-right: 6px;"> ${pages[0].name}</label></div>`;
+            // Категории со статьями
             categories.forEach(cat => {
                 const catArticles = articles.filter(a => a.category === cat.id);
-                html += `<div style="margin-top: 8px;">`;
+                html += `<div class="category-group" style="margin-top: 8px;">`;
                 html += `<div style="margin-bottom: 4px;"><label><input type="checkbox" class="category-checkbox" data-category="${cat.id}" style="margin-right: 6px;"> <strong>${cat.name}</strong></label></div>`;
-                html += `<div style="margin-left: 20px;">`;
+                html += `<div class="subitems" style="margin-left: 24px;">`;
                 catArticles.forEach(art => {
                     html += `<div style="margin-bottom: 2px;"><label><input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin-right: 6px;"> ${art.name}</label></div>`;
                 });
@@ -988,6 +1002,7 @@
 
             let lastQueryContent = '';
             let lastAnswerContent = '';
+            let currentAnswers = [];
 
             async function exportMetricsOnly() {
                 errorDiv.innerText = '';
@@ -1079,53 +1094,80 @@
                         return;
                     }
                 }
-                statusDiv.innerText = 'Подготовка данных для LLM...';
+                statusDiv.innerText = 'Подготовка данных...';
                 try {
                     const metrics = await fetchMetrics(limit);
                     const metricsJson = JSON.stringify(metrics, null, 2);
-                    const pagesCode = getAllPagesCode();
-                    lastQueryContent = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
                     
-                    statusDiv.innerText = 'Отправка в LLM...';
+                    // Получаем список страниц, которые уже загружены в pagesDom
+                    const pageEntries = Object.entries(pagesDom);
+                    if (pageEntries.length === 0) {
+                        errorDiv.innerText = 'Нет загруженных страниц. Сначала загрузите страницы через кнопку "Загрузить выбранные страницы".';
+                        return;
+                    }
+                    
+                    currentAnswers = [];
+                    statusDiv.innerText = 'Отправка запросов в LLM (по одной странице)...';
+                    llmResponseText.innerHTML = '';
+                    llmResponseDiv.style.display = 'block';
+                    
                     const targetApi = 'https://diletant.site:4222/test';
                     const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
                     const modelName = 'devstral-2:123b-cloud';
-
-                    const response = await fetch(targetApi, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify({
-                            model: modelName,
-                            prompt: lastQueryContent,
-                            stream: false
-                        })
-                    });
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        throw new Error(`HTTP ${response.status}: ${errorText}`);
-                    }
-                    const data = await response.json();
-                    lastAnswerContent = data.response || JSON.stringify(data);
                     
-                    let formattedHtml = lastAnswerContent;
-                    if (typeof marked !== 'undefined') {
-                        formattedHtml = marked.parse(lastAnswerContent);
-                    } else {
-                        formattedHtml = lastAnswerContent.replace(/\n/g, '<br>');
+                    let total = pageEntries.length;
+                    let completed = 0;
+                    
+                    for (const [hash, pageHtml] of pageEntries) {
+                        // Получаем имя страницы
+                        let pageName = hash;
+                        const cb = document.querySelector(`.article-checkbox[data-hash="${hash}"]`);
+                        if (cb) pageName = cb.parentElement.innerText.trim();
+                        const mainCb = document.querySelector(`.page-checkbox[data-hash="${hash}"]`);
+                        if (mainCb) pageName = mainCb.parentElement.innerText.trim();
+                        
+                        statusDiv.innerText = `Отправка страницы "${pageName}" (${completed+1}/${total})...`;
+                        const queryContent = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n===== СТРАНИЦА: ${pageName} (${hash}) =====\n${pageHtml}`;
+                        
+                        try {
+                            const response = await fetch(targetApi, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Authorization': `Bearer ${apiKey}`
+                                },
+                                body: JSON.stringify({
+                                    model: modelName,
+                                    prompt: queryContent,
+                                    stream: false
+                                })
+                            });
+                            if (!response.ok) {
+                                throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                            }
+                            const data = await response.json();
+                            const answer = data.response || JSON.stringify(data);
+                            currentAnswers.push(`--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ${pageName} ---\n${answer}`);
+                            completed++;
+                            // Показываем промежуточные результаты
+                            llmResponseText.innerHTML = currentAnswers.join('\n\n');
+                        } catch (err) {
+                            currentAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${pageName} ---\n${err.message}`);
+                            completed++;
+                            llmResponseText.innerHTML = currentAnswers.join('\n\n');
+                        }
                     }
-                    llmResponseText.innerHTML = formattedHtml;
-                    llmResponseDiv.style.display = 'block';
-                    statusDiv.innerText = 'Готово! Ответ получен и отображён ниже.';
+                    
+                    lastAnswerContent = currentAnswers.join('\n\n');
+                    statusDiv.innerText = 'Готово! Все ответы получены.';
+                    
                 } catch (err) {
                     errorDiv.innerText = 'Ошибка: ' + err.message;
                     console.error(err);
                     statusDiv.innerText = '';
                 }
             }
-
+            
             function downloadQuery() {
                 if (!lastQueryContent) {
                     errorDiv.innerText = 'Нет отправленного запроса. Сначала отправьте данные в LLM.';
@@ -1141,7 +1183,7 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }
-
+            
             function downloadAnswer() {
                 if (!lastAnswerContent) {
                     errorDiv.innerText = 'Нет полученного ответа. Сначала отправьте данные в LLM.';
@@ -1157,7 +1199,7 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }
-
+            
             initCheckboxes();
             restoreCheckboxesState();
             loadPagesBtn.addEventListener('click', loadSelectedPages);
@@ -1167,7 +1209,7 @@
             downloadQueryBtn.addEventListener('click', downloadQuery);
             downloadAnswerBtn.addEventListener('click', downloadAnswer);
         }
-
+        
         const originalRouter = window.originalRouterForAdmin;
         function adminAwareRouter() {
             const hash = window.location.hash.slice(1);
