@@ -650,7 +650,8 @@
 (function() {
     let adminActive = false;
     let originalContent = null;
-    let savedDom = null;
+    let pagesDom = {};          // объект: URL → сохранённый HTML
+    let loadedCount = 0;        // для отображения прогресса
 
     // --- Подключаем библиотеку marked для рендеринга Markdown ---
     function loadMarked() {
@@ -662,7 +663,8 @@
     }
     loadMarked();
 
-    // --- Сохраняем реальный DOM текущей страницы при переходе в админку ---
+    // ==== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С DOM ====
+    // Клонирует и очищает текущий DOM от админ-элементов
     function captureCurrentDom() {
         const cloneDoc = document.cloneNode(true);
         const scripts = cloneDoc.querySelectorAll('script');
@@ -684,72 +686,190 @@
         let html = cloneDoc.documentElement.outerHTML;
         html = html.replace(/<!-- START_ADMIN -->/g, '');
         html = html.replace(/<!-- END_ADMIN -->/g, '');
-        console.log('captureCurrentDom: стилей сохранено:', cloneDoc.querySelectorAll('style').length);
         return '<!DOCTYPE html>\n' + html;
     }
 
-    // --- Получить чистый код сайта (реальный DOM) ---
-    function getCleanSiteCode() {
-        if (savedDom) return savedDom;
-        const cloneDoc = document.cloneNode(true);
-        const scripts = cloneDoc.querySelectorAll('script');
-        for (let script of scripts) {
-            if (script.textContent.includes('START_ADMIN') || 
-                script.textContent.includes('adminAwareRouter') ||
-                script.textContent.includes('showAdminLogin') ||
-                script.textContent.includes('getCleanSiteCode')) {
-                script.remove();
-            }
-        }
-        const adminContainers = cloneDoc.querySelectorAll('.admin-container');
-        adminContainers.forEach(el => el.remove());
-        const styleNodes = cloneDoc.querySelectorAll('style');
-        for (let style of styleNodes) {
-            if (style.textContent.includes('.admin-container')) {
-                style.remove();
-            }
-        }
-        let html = cloneDoc.documentElement.outerHTML;
-        html = html.replace(/<!-- START_ADMIN -->/g, '');
-        html = html.replace(/<!-- END_ADMIN -->/g, '');
-        html = html.replace(/\n\s*\n/g, '\n');
-        return '<!DOCTYPE html>\n' + html;
+    // Захват DOM для заданного хэша (с ожиданием рендеринга)
+    async function captureDomByHash(hash) {
+        const originalHash = window.location.hash;
+        window.location.hash = hash;
+        await new Promise(resolve => setTimeout(resolve, 400));
+        const dom = captureCurrentDom();
+        window.location.hash = originalHash;
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return dom;
     }
 
-    // --- Промпт для LLM (исправлен: убрана категоричная формулировка "причина") ---
-    const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
+    // --- Получение списка всех страниц (главная, категории, статьи) ---
+    function getAllPages() {
+        const pages = [
+            { name: 'Главная', hash: '#/', type: 'main' }
+        ];
+        const categories = [
+            { name: 'Политика', hash: '#/category/politics', id: 'politics' },
+            { name: 'Спорт', hash: '#/category/sport', id: 'sport' },
+            { name: 'Технологии', hash: '#/category/tech', id: 'tech' },
+            { name: 'Наука', hash: '#/category/science', id: 'science' },
+            { name: 'Культура', hash: '#/category/culture', id: 'culture' }
+        ];
+        const articles = [
+            // Политика
+            { name: 'Цифровой рубль', hash: '#/article/politics1', category: 'politics' },
+            { name: 'Налоговый кодекс', hash: '#/article/politics2', category: 'politics' },
+            // Спорт
+            { name: 'Футбол (Россия-Иран)', hash: '#/article/sport1', category: 'sport' },
+            { name: 'Хоккей (Кубок Первого канала)', hash: '#/article/sport2', category: 'sport' },
+            // Технологии
+            { name: 'YandexGPT 3', hash: '#/article/tech1', category: 'tech' },
+            { name: 'Квантовый процессор', hash: '#/article/tech2', category: 'tech' },
+            // Наука
+            { name: 'Экзопланета', hash: '#/article/science1', category: 'science' },
+            { name: 'ДНК бизона', hash: '#/article/science2', category: 'science' },
+            // Культура
+            { name: 'Выставка Репина', hash: '#/article/culture1', category: 'culture' },
+            { name: 'Балет Щелкунчик', hash: '#/article/culture2', category: 'culture' }
+        ];
+        return { pages, categories, articles };
+    }
 
-ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
+    // --- Генерация HTML дерева выбора страниц ---
+    function buildPagesTree() {
+        const { pages, categories, articles } = getAllPages();
+        let html = '<div style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">';
+        // Главная
+        html += `<div><label><input type="checkbox" class="page-checkbox" data-hash="#/" data-type="main"> ${pages[0].name}</label></div>`;
+        // Категории со статьями
+        categories.forEach(cat => {
+            const catArticles = articles.filter(a => a.category === cat.id);
+            html += `<div style="margin-left: 0; margin-top: 10px;">`;
+            html += `<div><label><input type="checkbox" class="category-checkbox" data-category="${cat.id}"> <strong>${cat.name}</strong></label></div>`;
+            html += `<div style="margin-left: 20px;" id="cat-${cat.id}">`;
+            catArticles.forEach(art => {
+                html += `<div><label><input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}"> ${art.name}</label></div>`;
+            });
+            html += `</div></div>`;
+        });
+        html += '</div>';
+        return html;
+    }
+
+    // --- Функция для загрузки выбранных страниц ---
+    async function loadSelectedPages() {
+        const selectedHashes = [];
+        document.querySelectorAll('.page-checkbox:checked, .article-checkbox:checked').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash) selectedHashes.push(hash);
+        });
+        if (selectedHashes.length === 0) {
+            document.getElementById('exportError').innerText = 'Выберите хотя бы одну страницу для загрузки.';
+            return;
+        }
+        const total = selectedHashes.length;
+        let loaded = 0;
+        const newPagesDom = {};
+        for (const hash of selectedHashes) {
+            const statusDiv = document.getElementById('exportStatus');
+            if (statusDiv) statusDiv.innerText = `Загрузка страниц: ${loaded+1}/${total}...`;
+            try {
+                const dom = await captureDomByHash(hash);
+                newPagesDom[hash] = dom;
+                loaded++;
+            } catch (err) {
+                console.error(`Ошибка загрузки ${hash}:`, err);
+            }
+        }
+        pagesDom = newPagesDom;
+        const infoSpan = document.getElementById('loadedPagesInfo');
+        if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loaded} из ${total}`;
+        document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
+        // Обновляем информацию о текущем анализе
+        if (loaded > 0) {
+            const pageNames = selectedHashes.map(h => {
+                const cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) return cb.parentElement.innerText.trim();
+                const mainCb = document.querySelector(`.page-checkbox[data-hash="${h}"]`);
+                if (mainCb) return mainCb.parentElement.innerText.trim();
+                return h;
+            }).join(', ');
+            document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: <strong>${pageNames}</strong>`;
+        }
+    }
+
+    // --- Получить объединённый HTML всех захваченных страниц (для отправки в LLM) ---
+    function getAllPagesCode() {
+        let result = '';
+        for (const [hash, html] of Object.entries(pagesDom)) {
+            // Получаем имя страницы для читаемости
+            let pageName = hash;
+            const cb = document.querySelector(`.article-checkbox[data-hash="${hash}"]`);
+            if (cb) pageName = cb.parentElement.innerText.trim();
+            const mainCb = document.querySelector(`.page-checkbox[data-hash="${hash}"]`);
+            if (mainCb) pageName = mainCb.parentElement.innerText.trim();
+            result += `\n\n===== СТРАНИЦА: ${pageName} (${hash}) =====\n${html}`;
+        }
+        return result;
+    }
+
+    // --- Остальные неизменные функции (fetchMetrics, exportMetricsOnly, exportFullTxt) ---
+    // Они переносятся без изменений (с фильтром page_exits >=200 мс)
+    async function fetchMetrics(limit) {
+        const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
+        let result = {};
+        for (const col of collections) {
+            const snapshot = await db.collection(col).get();
+            const docs = [];
+            snapshot.forEach(doc => {
+                let data = doc.data();
+                if (data.userAgent) delete data.userAgent;
+                if (data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
+                docs.push({ id: doc.id, ...data });
+            });
+            docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
+            let filtered = docs.filter(record => {
+                const urls = [record.pageUrl, record.url, record.fromPage];
+                for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
+                return true;
+            });
+            if (col === 'page_exits') {
+                filtered = filtered.filter(record => record.timeSpentMs >= 200);
+            }
+            result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
+        }
+        return result;
+    }
+
+    // --- Промпт для LLM (исправленный) ---
+    const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованные страницы) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
+
+ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально.
 
 Требования к анализу:
 - Опирайся на числовые метрики (время на странице, глубина прокрутки, клики, уходы). Обязательно приводи цифры.
-- Удели особое внимание визуальным аспектам: цветовой контраст между текстом и фоном, читаемость заголовков, размер шрифта, отступы.
-- Выяви, где пользователи кликают по элементам, которые не являются ссылками (например, по тексту, который выглядит как ссылка, но не ведёт никуда).
-- Игнорируй аномально короткие сессии (менее 200 мс) – они являются техническим артефактом и не отражают реальное поведение.
-- В формулировках избегай слова "причина" в значении абсолютной уверенности. Используй "возможная причина" или просто описывай наблюдаемый факт без категоричных утверждений.
+- Удели особое внимание визуальным аспектам: цветовой контраст, читаемость заголовков, размер шрифта, отступы.
+- Выяви, где пользователи кликают по элементам, которые не являются ссылками.
+- Игнорируй аномально короткие сессии (менее 200 мс) – они технический артефакт.
 
 Формат ответа:
 
 ## Проблемы
-- **Проблема 1**: описание (где, что не так). (ссылка на метрику: «70% пользователей уходят за 2 секунды»)
+- **Проблема 1**: описание (где, что не так). (ссылка на метрику)
 - ...
 
 ## Рекомендации
-- **Рекомендация 1**: конкретное действие, понятное не-разработчику. (Приоритет: высокий/средний/низкий)
+- **Рекомендация 1**: конкретное действие. (Приоритет: высокий/средний/низкий)
 - ...
 
 ## Приоритетность действий
-- Сначала исправить: [перечислить рекомендации с высоким приоритетом]
+- Сначала исправить: [высокий приоритет]
 - Затем: [средний]
 - В последнюю очередь: [низкий]
 
-ВАЖНО: количество пунктов в разделе "Приоритетность действий" должно соответствовать количеству рекомендаций. Не добавляй лишних пунктов. Если рекомендация одна, пиши один пункт.
+ВАЖНО: количество пунктов в разделе "Приоритетность действий" соответствует количеству рекомендаций.
 
-Ответ дай на русском языке, кратко, без воды.`;
+Ответ на русском языке, кратко, без воды.`;
 
-    // --- Логин ---
+    // --- ЛОГИН ---
     function showAdminLogin() {
-        savedDom = captureCurrentDom();
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
@@ -781,41 +901,25 @@
         adminActive = true;
     }
 
-    // --- Получение метрик из Firestore (с фильтрацией аномальных page_exits) ---
-    async function fetchMetrics(limit) {
-        const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
-        let result = {};
-        for (const col of collections) {
-            const snapshot = await db.collection(col).get();
-            const docs = [];
-            snapshot.forEach(doc => {
-                let data = doc.data();
-                if (data.userAgent) delete data.userAgent;
-                if (data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
-                docs.push({ id: doc.id, ...data });
-            });
-            docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-            let filtered = docs.filter(record => {
-                const urls = [record.pageUrl, record.url, record.fromPage];
-                for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
-                return true;
-            });
-            // Для page_exits отфильтруем аномально короткие сессии (менее 200 мс)
-            if (col === 'page_exits') {
-                filtered = filtered.filter(record => record.timeSpentMs >= 200);
-            }
-            result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
-        }
-        return result;
-    }
-
-    // --- Админ-панель ---
+    // --- АДМИН-ПАНЕЛЬ (основная) ---
     function showAdminPanel() {
+        const pagesTreeHtml = buildPagesTree();
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
                 <h2>Панель экспорта метрик</h2>
                 <label>Ограничение записей (только целое положительное число):</label>
                 <input type="text" id="limitInput" placeholder="например, 100" />
+                
+                <div style="margin-top: 15px;">
+                    <label>Выберите страницы для анализа (можно несколько):</label>
+                    ${pagesTreeHtml}
+                    <div style="margin-top: 10px;">
+                        <button id="loadPagesBtn">Загрузить выбранные страницы</button>
+                        <span id="loadedPagesInfo" style="margin-left: 15px; font-style: italic;"></span>
+                    </div>
+                    <div id="currentPageInfo" style="margin-top: 10px; font-size: 0.9em; color: #005f73;">Анализируемые страницы: не выбраны</div>
+                </div>
+                
                 <div style="margin-top: 20px;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="exportFullBtn">Получить полный файл для анализа</button>
@@ -825,7 +929,7 @@
                 <div id="exportError" class="error"></div>
                 <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; display: none;">
                     <h3>Ответ от LLM</h3>
-                    <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; max-height: 400px; overflow: auto;"></div>
+                    <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; white-space: pre-wrap; font-family: inherit; max-height: 400px; overflow: auto;"></div>
                     <div style="margin-top: 10px;">
                         <button id="downloadQueryBtn">Скачать запрос</button>
                         <button id="downloadAnswerBtn">Скачать ответ</button>
@@ -834,7 +938,32 @@
             </div>
         `;
 
+        // --- Логика чекбоксов (категория → все статьи, и обратно) ---
+        function initCheckboxes() {
+            // При изменении категории — переключаем все её статьи
+            document.querySelectorAll('.category-checkbox').forEach(catCb => {
+                catCb.addEventListener('change', (e) => {
+                    const categoryId = catCb.dataset.category;
+                    const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
+                    articleBoxes.forEach(art => art.checked = catCb.checked);
+                });
+            });
+            // При изменении любой статьи — проверяем, нужно ли снять флаг с категории
+            document.querySelectorAll('.article-checkbox').forEach(artCb => {
+                artCb.addEventListener('change', () => {
+                    const categoryId = artCb.dataset.category;
+                    const catCb = document.querySelector(`.category-checkbox[data-category="${categoryId}"]`);
+                    if (!catCb) return;
+                    const articlesInCat = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
+                    const allChecked = Array.from(articlesInCat).every(cb => cb.checked);
+                    catCb.checked = allChecked;
+                });
+            });
+        }
+
+        // Получение элементов DOM
         const limitInput = document.getElementById('limitInput');
+        const loadPagesBtn = document.getElementById('loadPagesBtn');
         const exportMetricsBtn = document.getElementById('exportMetricsBtn');
         const exportFullBtn = document.getElementById('exportFullBtn');
         const sendToLLMBtn = document.getElementById('sendToLLMBtn');
@@ -844,26 +973,7 @@
         const llmResponseText = document.getElementById('llmResponseText');
         const downloadQueryBtn = document.getElementById('downloadQueryBtn');
         const downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
-
-        // Дополнительные стили для уменьшения отступов в рендеренном Markdown
-        const style = document.createElement('style');
-        style.textContent = `
-            .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
-                margin: 0.5em 0 0.2em 0;
-            }
-            .llm-response-text p {
-                margin: 0.3em 0;
-            }
-            .llm-response-text ul, .llm-response-text ol {
-                margin: 0.3em 0 0.5em 1.5em;
-                padding: 0;
-            }
-            .llm-response-text li {
-                margin: 0.1em 0;
-            }
-        `;
-        document.head.appendChild(style);
-
+        
         let lastQueryContent = '';
         let lastAnswerContent = '';
 
@@ -925,8 +1035,8 @@
             try {
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
-                const siteCode = getCleanSiteCode();
-                const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+                const pagesCode = getAllPagesCode();
+                const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
                 const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -942,7 +1052,7 @@
             }
         }
 
-        // --- Отправка в LLM с рендерингом Markdown ---
+        // --- Отправка в LLM ---
         async function sendToLLM() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -964,8 +1074,8 @@
             try {
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
-                const siteCode = getCleanSiteCode();
-                lastQueryContent = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+                const pagesCode = getAllPagesCode();
+                lastQueryContent = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
                 
                 statusDiv.innerText = 'Отправка в LLM...';
                 const targetApi = 'https://diletant.site:4222/test';
@@ -1039,6 +1149,9 @@
             URL.revokeObjectURL(url);
         }
 
+        // --- Инициализация событий ---
+        initCheckboxes();
+        loadPagesBtn.addEventListener('click', loadSelectedPages);
         exportMetricsBtn.addEventListener('click', exportMetricsOnly);
         exportFullBtn.addEventListener('click', exportFullTxt);
         sendToLLMBtn.addEventListener('click', sendToLLM);
@@ -1046,7 +1159,7 @@
         downloadAnswerBtn.addEventListener('click', downloadAnswer);
     }
 
-    // --- Роутер для админки ---
+    // --- Роутер для админки (перехват #/admin) ---
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         const hash = window.location.hash.slice(1);
