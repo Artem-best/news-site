@@ -716,7 +716,7 @@
         return '<!DOCTYPE html>\n' + html;
     }
 
-    // --- Промпт для LLM (исправленный) ---
+    // --- Промпт для LLM (исправлен: убрана категоричная формулировка "причина") ---
     const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
 
 ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
@@ -726,6 +726,7 @@
 - Удели особое внимание визуальным аспектам: цветовой контраст между текстом и фоном, читаемость заголовков, размер шрифта, отступы.
 - Выяви, где пользователи кликают по элементам, которые не являются ссылками (например, по тексту, который выглядит как ссылка, но не ведёт никуда).
 - Игнорируй аномально короткие сессии (менее 200 мс) – они являются техническим артефактом и не отражают реальное поведение.
+- В формулировках избегай слова "причина" в значении абсолютной уверенности. Используй "возможная причина" или просто описывай наблюдаемый факт без категоричных утверждений.
 
 Формат ответа:
 
@@ -824,7 +825,7 @@
                 <div id="exportError" class="error"></div>
                 <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; display: none;">
                     <h3>Ответ от LLM</h3>
-                    <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; white-space: pre-wrap; font-family: inherit; max-height: 400px; overflow: auto;"></div>
+                    <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; max-height: 400px; overflow: auto;"></div>
                     <div style="margin-top: 10px;">
                         <button id="downloadQueryBtn">Скачать запрос</button>
                         <button id="downloadAnswerBtn">Скачать ответ</button>
@@ -843,6 +844,25 @@
         const llmResponseText = document.getElementById('llmResponseText');
         const downloadQueryBtn = document.getElementById('downloadQueryBtn');
         const downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
+
+        // Дополнительные стили для уменьшения отступов в рендеренном Markdown
+        const style = document.createElement('style');
+        style.textContent = `
+            .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
+                margin: 0.5em 0 0.2em 0;
+            }
+            .llm-response-text p {
+                margin: 0.3em 0;
+            }
+            .llm-response-text ul, .llm-response-text ol {
+                margin: 0.3em 0 0.5em 1.5em;
+                padding: 0;
+            }
+            .llm-response-text li {
+                margin: 0.1em 0;
+            }
+        `;
+        document.head.appendChild(style);
 
         let lastQueryContent = '';
         let lastAnswerContent = '';
@@ -971,7 +991,6 @@
                 const data = await response.json();
                 lastAnswerContent = data.response || JSON.stringify(data);
                 
-                // Рендерим Markdown
                 let formattedHtml = lastAnswerContent;
                 if (typeof marked !== 'undefined') {
                     formattedHtml = marked.parse(lastAnswerContent);
