@@ -652,6 +652,16 @@
     let originalContent = null;
     let savedDom = null;
 
+    // --- Подключаем библиотеку marked для рендеринга Markdown ---
+    function loadMarked() {
+        if (typeof marked !== 'undefined') return;
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+        script.async = false;
+        document.head.appendChild(script);
+    }
+    loadMarked();
+
     // --- Сохраняем реальный DOM текущей страницы при переходе в админку ---
     function captureCurrentDom() {
         const cloneDoc = document.cloneNode(true);
@@ -674,7 +684,6 @@
         let html = cloneDoc.documentElement.outerHTML;
         html = html.replace(/<!-- START_ADMIN -->/g, '');
         html = html.replace(/<!-- END_ADMIN -->/g, '');
-        // Отладка: сколько стилей сохранено
         console.log('captureCurrentDom: стилей сохранено:', cloneDoc.querySelectorAll('style').length);
         return '<!DOCTYPE html>\n' + html;
     }
@@ -707,7 +716,7 @@
         return '<!DOCTYPE html>\n' + html;
     }
 
-    // --- Промпт для LLM (обновлённый) ---
+    // --- Промпт для LLM (исправленный) ---
     const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
 
 ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
@@ -716,7 +725,7 @@
 - Опирайся на числовые метрики (время на странице, глубина прокрутки, клики, уходы). Обязательно приводи цифры.
 - Удели особое внимание визуальным аспектам: цветовой контраст между текстом и фоном, читаемость заголовков, размер шрифта, отступы.
 - Выяви, где пользователи кликают по элементам, которые не являются ссылками (например, по тексту, который выглядит как ссылка, но не ведёт никуда).
-- Обрати внимание на аномально короткие сессии (менее 100 мс) – возможно, это техническая ошибка или мгновенный уход.
+- Игнорируй аномально короткие сессии (менее 200 мс) – они являются техническим артефактом и не отражают реальное поведение.
 
 Формат ответа:
 
@@ -729,9 +738,11 @@
 - ...
 
 ## Приоритетность действий
-- Сначала исправить: [высокий приоритет]
+- Сначала исправить: [перечислить рекомендации с высоким приоритетом]
 - Затем: [средний]
 - В последнюю очередь: [низкий]
+
+ВАЖНО: количество пунктов в разделе "Приоритетность действий" должно соответствовать количеству рекомендаций. Не добавляй лишних пунктов. Если рекомендация одна, пиши один пункт.
 
 Ответ дай на русском языке, кратко, без воды.`;
 
@@ -769,7 +780,7 @@
         adminActive = true;
     }
 
-    // --- Получение метрик из Firestore ---
+    // --- Получение метрик из Firestore (с фильтрацией аномальных page_exits) ---
     async function fetchMetrics(limit) {
         const collections = ['page_views', 'clicks', 'scroll_depth', 'page_exits', 'performance_metrics'];
         let result = {};
@@ -783,11 +794,15 @@
                 docs.push({ id: doc.id, ...data });
             });
             docs.sort((a, b) => (a.timestamp || '').localeCompare(b.timestamp || ''));
-            const filtered = docs.filter(record => {
+            let filtered = docs.filter(record => {
                 const urls = [record.pageUrl, record.url, record.fromPage];
                 for (let u of urls) if (u && (u.includes('#/admin') || u.includes('/admin'))) return false;
                 return true;
             });
+            // Для page_exits отфильтруем аномально короткие сессии (менее 200 мс)
+            if (col === 'page_exits') {
+                filtered = filtered.filter(record => record.timeSpentMs >= 200);
+            }
             result[col] = (limit && limit > 0) ? filtered.slice(-limit) : filtered;
         }
         return result;
@@ -807,9 +822,9 @@
                 </div>
                 <div id="exportStatus" class="success"></div>
                 <div id="exportError" class="error"></div>
-                <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 5px; display: none;">
+                <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; display: none;">
                     <h3>Ответ от LLM</h3>
-                    <div id="llmResponseText" style="white-space: pre-wrap; font-family: monospace; max-height: 400px; overflow: auto;"></div>
+                    <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; white-space: pre-wrap; font-family: inherit; max-height: 400px; overflow: auto;"></div>
                     <div style="margin-top: 10px;">
                         <button id="downloadQueryBtn">Скачать запрос</button>
                         <button id="downloadAnswerBtn">Скачать ответ</button>
@@ -907,7 +922,7 @@
             }
         }
 
-        // --- Отправка в LLM ---
+        // --- Отправка в LLM с рендерингом Markdown ---
         async function sendToLLM() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -956,8 +971,15 @@
                 const data = await response.json();
                 lastAnswerContent = data.response || JSON.stringify(data);
                 
+                // Рендерим Markdown
+                let formattedHtml = lastAnswerContent;
+                if (typeof marked !== 'undefined') {
+                    formattedHtml = marked.parse(lastAnswerContent);
+                } else {
+                    formattedHtml = lastAnswerContent.replace(/\n/g, '<br>');
+                }
+                llmResponseText.innerHTML = formattedHtml;
                 llmResponseDiv.style.display = 'block';
-                llmResponseText.innerText = lastAnswerContent;
                 statusDiv.innerText = 'Готово! Ответ получен и отображён ниже.';
             } catch (err) {
                 errorDiv.innerText = 'Ошибка: ' + err.message;
