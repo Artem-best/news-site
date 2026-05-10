@@ -650,9 +650,38 @@
 (function() {
     let adminActive = false;
     let originalContent = null;
+    let savedDom = null;
 
-    // --- Очистка кода сайта от админ-панели ---
+    // --- Сохраняем реальный DOM текущей страницы при переходе в админку ---
+    function captureCurrentDom() {
+        const cloneDoc = document.cloneNode(true);
+        const scripts = cloneDoc.querySelectorAll('script');
+        for (let script of scripts) {
+            if (script.textContent.includes('START_ADMIN') || 
+                script.textContent.includes('adminAwareRouter') ||
+                script.textContent.includes('showAdminLogin')) {
+                script.remove();
+            }
+        }
+        const adminDivs = cloneDoc.querySelectorAll('.admin-container');
+        adminDivs.forEach(el => el.remove());
+        const styleNodes = cloneDoc.querySelectorAll('style');
+        for (let style of styleNodes) {
+            if (style.textContent.includes('.admin-container')) {
+                style.remove();
+            }
+        }
+        let html = cloneDoc.documentElement.outerHTML;
+        html = html.replace(/<!-- START_ADMIN -->/g, '');
+        html = html.replace(/<!-- END_ADMIN -->/g, '');
+        // Отладка: сколько стилей сохранено
+        console.log('captureCurrentDom: стилей сохранено:', cloneDoc.querySelectorAll('style').length);
+        return '<!DOCTYPE html>\n' + html;
+    }
+
+    // --- Получить чистый код сайта (реальный DOM) ---
     function getCleanSiteCode() {
+        if (savedDom) return savedDom;
         const cloneDoc = document.cloneNode(true);
         const scripts = cloneDoc.querySelectorAll('script');
         for (let script of scripts) {
@@ -678,8 +707,37 @@
         return '<!DOCTYPE html>\n' + html;
     }
 
+    // --- Промпт для LLM (обновлённый) ---
+    const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
+
+ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
+
+Требования к анализу:
+- Опирайся на числовые метрики (время на странице, глубина прокрутки, клики, уходы). Обязательно приводи цифры.
+- Удели особое внимание визуальным аспектам: цветовой контраст между текстом и фоном, читаемость заголовков, размер шрифта, отступы.
+- Выяви, где пользователи кликают по элементам, которые не являются ссылками (например, по тексту, который выглядит как ссылка, но не ведёт никуда).
+- Обрати внимание на аномально короткие сессии (менее 100 мс) – возможно, это техническая ошибка или мгновенный уход.
+
+Формат ответа:
+
+## Проблемы
+- **Проблема 1**: описание (где, что не так). (ссылка на метрику: «70% пользователей уходят за 2 секунды»)
+- ...
+
+## Рекомендации
+- **Рекомендация 1**: конкретное действие, понятное не-разработчику. (Приоритет: высокий/средний/низкий)
+- ...
+
+## Приоритетность действий
+- Сначала исправить: [высокий приоритет]
+- Затем: [средний]
+- В последнюю очередь: [низкий]
+
+Ответ дай на русском языке, кратко, без воды.`;
+
     // --- Логин ---
     function showAdminLogin() {
+        savedDom = captureCurrentDom();
         if (!originalContent) originalContent = document.getElementById('content').innerHTML;
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
@@ -735,7 +793,7 @@
         return result;
     }
 
-    // --- Админ-панель с тремя кнопками ---
+    // --- Админ-панель ---
     function showAdminPanel() {
         document.getElementById('content').innerHTML = `
             <div class="admin-container">
@@ -749,6 +807,14 @@
                 </div>
                 <div id="exportStatus" class="success"></div>
                 <div id="exportError" class="error"></div>
+                <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ccc; border-radius: 5px; display: none;">
+                    <h3>Ответ от LLM</h3>
+                    <div id="llmResponseText" style="white-space: pre-wrap; font-family: monospace; max-height: 400px; overflow: auto;"></div>
+                    <div style="margin-top: 10px;">
+                        <button id="downloadQueryBtn">Скачать запрос</button>
+                        <button id="downloadAnswerBtn">Скачать ответ</button>
+                    </div>
+                </div>
             </div>
         `;
 
@@ -758,8 +824,15 @@
         const sendToLLMBtn = document.getElementById('sendToLLMBtn');
         const statusDiv = document.getElementById('exportStatus');
         const errorDiv = document.getElementById('exportError');
+        const llmResponseDiv = document.getElementById('llmResponse');
+        const llmResponseText = document.getElementById('llmResponseText');
+        const downloadQueryBtn = document.getElementById('downloadQueryBtn');
+        const downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
 
-        // --- Экспорт только метрик (JSON) ---
+        let lastQueryContent = '';
+        let lastAnswerContent = '';
+
+        // --- Экспорт метрик (JSON) ---
         async function exportMetricsOnly() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -834,33 +907,8 @@
             }
         }
 
-        // --- Отправка в LLM через публичный CORS-прокси (без активации) ---
+        // --- Отправка в LLM ---
         async function sendToLLM() {
-
-            const analysisPrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (например, менеджеру или дизайнеру). Избегай технических терминов вроде «тег», «класс», «id» — описывай проблемы и решения на уровне визуальных элементов и поведения.
-                Тебе будут предоставлены:
-                1. Метрики в формате JSON (просмотры страниц, клики, глубина прокрутки, уходы со страницы, производительность).
-                2. HTML-код текущей страницы (содержимое DOM после полной загрузки и рендеринга, без скриптов админ-панели).
-                На основе этих данных:
-                - Выяви основные проблемы UX/UI, опираясь на количественные показатели (низкая глубина прокрутки, частые уходы, клики по элементам, которые не являются ссылками, медленная загрузка и т.п.).
-                - Для каждой проблемы опиши, где она возникает (например: «на главной странице в блоке последних новостей», «в шапке статьи», «на странице категории»).
-                - Сформулируй рекомендацию так, чтобы было понятно, что именно нужно изменить и почему. Используй формулировки как в примерах:
-                   * «На странице статьи цвет текста имеет низкую контрастность в сравнении с фоном, рекомендуется повысить контрастность для лучшей читаемости.»
-                   * «На странице статьи пользователи кликали на название категории, расположенное в заголовке. Сейчас название категории – простой текст, но пользователи пытаются нажать на него, чтобы открыть соответствующий раздел. Рекомендуется сделать названия категорий в заголовках статей ссылками, ведущими в эти категории.»
-                - Для каждой рекомендации укажи приоритет (высокий, средний, низкий).
-                Формат ответа (строго соблюдай):
-                ## Проблемы
-                - **Проблема 1**: [описание, где и что не так] (ссылка на метрику: «45% пользователей уходят с главной страницы за 3 секунды»).
-                - **Проблема 2**: ...
-                ## Рекомендации
-                - **Рекомендация 1**: [конкретное действие, понятное не-разработчику] (Приоритет: высокий/средний/низкий)
-                - **Рекомендация 2**: ... (Приоритет: ...)
-                ## Приоритетность действий
-                - Сначала исправить: [список высокоприоритетных рекомендаций]
-                - Затем: [средний]
-                - В последнюю очередь: [низкий]
-                Ответ должен быть на русском языке, кратким, по делу.`;
-            
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
             let limit = null;
@@ -882,17 +930,14 @@
                 const metrics = await fetchMetrics(limit);
                 const metricsJson = JSON.stringify(metrics, null, 2);
                 const siteCode = getCleanSiteCode();
-                const content = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
-              /*  const content = `---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`; */
-
-                statusDiv.innerText = 'Отправка в LLM (через прокси)...';
-                // Прокси, не требующий активации
-              /*  const proxyUrl = 'https://cors.x2u.in/'; */
+                lastQueryContent = `${analysisPrompt}\n\n---ДАННЫЕ---\n---METRICS---\n${metricsJson}\n---SITE_CODE---\n${siteCode}`;
+                
+                statusDiv.innerText = 'Отправка в LLM...';
                 const targetApi = 'https://diletant.site:4222/test';
                 const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
                 const modelName = 'devstral-2:123b-cloud';
 
-                const response = await fetch(/*proxyUrl + */ targetApi, {
+                const response = await fetch(targetApi, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -900,7 +945,7 @@
                     },
                     body: JSON.stringify({
                         model: modelName,
-                        prompt: content,
+                        prompt: lastQueryContent,
                         stream: false
                     })
                 });
@@ -909,30 +954,58 @@
                     throw new Error(`HTTP ${response.status}: ${errorText}`);
                 }
                 const data = await response.json();
-                const llmAnswer = data.response || JSON.stringify(data);
-                // Скачиваем ответ
-                const blob = new Blob([llmAnswer], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'llm_response.txt';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                statusDiv.innerText = 'Готово! Ответ LLM скачан.';
+                lastAnswerContent = data.response || JSON.stringify(data);
+                
+                llmResponseDiv.style.display = 'block';
+                llmResponseText.innerText = lastAnswerContent;
+                statusDiv.innerText = 'Готово! Ответ получен и отображён ниже.';
             } catch (err) {
                 errorDiv.innerText = 'Ошибка: ' + err.message;
                 console.error(err);
+                statusDiv.innerText = '';
             }
+        }
+
+        function downloadQuery() {
+            if (!lastQueryContent) {
+                errorDiv.innerText = 'Нет отправленного запроса. Сначала отправьте данные в LLM.';
+                return;
+            }
+            const blob = new Blob([lastQueryContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'llm_query.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadAnswer() {
+            if (!lastAnswerContent) {
+                errorDiv.innerText = 'Нет полученного ответа. Сначала отправьте данные в LLM.';
+                return;
+            }
+            const blob = new Blob([lastAnswerContent], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'llm_response.txt';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         exportMetricsBtn.addEventListener('click', exportMetricsOnly);
         exportFullBtn.addEventListener('click', exportFullTxt);
         sendToLLMBtn.addEventListener('click', sendToLLM);
+        downloadQueryBtn.addEventListener('click', downloadQuery);
+        downloadAnswerBtn.addEventListener('click', downloadAnswer);
     }
 
-    // --- Роутер для админки (перехват #/admin) ---
+    // --- Роутер для админки ---
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         const hash = window.location.hash.slice(1);
