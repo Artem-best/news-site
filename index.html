@@ -660,7 +660,7 @@
 (function() {
     let adminActive = false;
     let originalContent = null;
-    let pagesDom = {};
+    let pagesDom = {};      // { "hash": { html: "...", contrastIssues: [...] } }
     let selectedPagesHashes = new Set();
 
     // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
@@ -680,19 +680,87 @@
     }
     loadScripts();
 
-    // Захватываем только структуру HTML (без скриптов, стилей и ссылок)
-    function capturePureStructure() {
+    // Функции контрастности
+    function getLuminance(r, g, b) {
+        const rsrgb = r / 255;
+        const gsrgb = g / 255;
+        const bsrgb = b / 255;
+        const rsrgbLin = rsrgb <= 0.03928 ? rsrgb / 12.92 : Math.pow((rsrgb + 0.055) / 1.055, 2.4);
+        const gsrgbLin = gsrgb <= 0.03928 ? gsrgb / 12.92 : Math.pow((gsrgb + 0.055) / 1.055, 2.4);
+        const bsrgbLin = bsrgb <= 0.03928 ? bsrgb / 12.92 : Math.pow((bsrgb + 0.055) / 1.055, 2.4);
+        return 0.2126 * rsrgbLin + 0.7152 * gsrgbLin + 0.0722 * bsrgbLin;
+    }
+
+    function getContrastRatio(color1, color2) {
+        const lum1 = getLuminance(color1.r, color1.g, color1.b);
+        const lum2 = getLuminance(color2.r, color2.g, color2.b);
+        const lighter = Math.max(lum1, lum2);
+        const darker = Math.min(lum1, lum2);
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    function parseColorString(colorStr) {
+        const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            return { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) };
+        }
+        return { r: 255, g: 255, b: 255 }; // белый fallback
+    }
+
+    function getContrastIssues() {
+        const issues = [];
+        const selectors = ['h1', 'h2', 'h3', 'p', 'a', '.news-item', '.category-badge', 'header h1', 'nav a', 'footer p'];
+        const elements = document.querySelectorAll(selectors.join(','));
+        for (let el of elements) {
+            const style = window.getComputedStyle(el);
+            const color = style.color;
+            const bgColor = style.backgroundColor;
+            if (!color || !bgColor || color === 'rgba(0, 0, 0, 0)' || bgColor === 'rgba(0, 0, 0, 0)') continue;
+            const colorParsed = parseColorString(color);
+            const bgParsed = parseColorString(bgColor);
+            const contrast = getContrastRatio(colorParsed, bgParsed);
+            let isLarge = false;
+            const fontSize = parseFloat(style.fontSize);
+            const fontWeight = style.fontWeight;
+            if ((fontSize >= 18) || (fontSize >= 14 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700))) {
+                isLarge = true;
+            }
+            const required = isLarge ? 3.0 : 4.5;
+            if (contrast < required) {
+                const textPreview = el.innerText.trim().slice(0, 60);
+                issues.push({
+                    element: el.tagName + (el.id ? '#'+el.id : '') + (el.className ? '.'+el.className : ''),
+                    text: textPreview,
+                    contrast: contrast.toFixed(2),
+                    required: required.toFixed(1),
+                    color: color,
+                    backgroundColor: bgColor
+                });
+            }
+        }
+        // Убираем дубликаты
+        const unique = [];
+        const keys = new Set();
+        for (let issue of issues) {
+            const key = `${issue.color}|${issue.backgroundColor}|${issue.text}`;
+            if (!keys.has(key)) {
+                keys.add(key);
+                unique.push(issue);
+            }
+        }
+        return unique.slice(0, 30);
+    }
+
+    function capturePureStructureWithContrast() {
         const cloneDoc = document.cloneNode(true);
+        // Удаляем скрипты и админ-блоки, но НЕ удаляем style и link
         const scripts = cloneDoc.querySelectorAll('script');
         scripts.forEach(s => s.remove());
-        const styles = cloneDoc.querySelectorAll('style');
-        styles.forEach(s => s.remove());
-        const links = cloneDoc.querySelectorAll('link');
-        links.forEach(l => l.remove());
         const adminDivs = cloneDoc.querySelectorAll('.admin-container');
         adminDivs.forEach(el => el.remove());
         let html = cloneDoc.documentElement.outerHTML;
         html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
+        html = html.replace(/ on\w+="[^"]*"/gi, '').replace(/ on\w+='[^']*'/gi, '');
         return '<!DOCTYPE html>\n' + html;
     }
 
@@ -701,11 +769,12 @@
         window.METRIKA_DISABLED = true;
         window.location.hash = hash;
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const dom = capturePureStructure();
+        const contrastIssues = getContrastIssues();
+        const domHtml = capturePureStructureWithContrast();
         window.location.hash = originalHash;
         await new Promise(resolve => setTimeout(resolve, 100));
         window.METRIKA_DISABLED = false;
-        return dom;
+        return { html: domHtml, contrastIssues };
     }
 
     function getAllPages() {
@@ -794,7 +863,6 @@
         pagesDom = newPagesDom;
         sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
         sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
-        // Сохраняем значение лимита
         const limitInput = document.getElementById('limitInput');
         if (limitInput) sessionStorage.setItem('limitValue', limitInput.value);
         document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
@@ -836,8 +904,44 @@
         return result;
     }
 
-    const singlePrompt = `Ты – эксперт по UX/UI для десктопных веб-сайтов. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Не давай рекомендации для мобильных устройств, только для экранов компьютеров. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
+    // ========== ПРОМПТЫ ==========
+    const singlePrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
+
+ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
+
+Требования к анализу:
+- Опирайся на числовые метрики (время на странице, глубина прокрутки, клики, уходы). Обязательно приводи цифры.
+- Удели особое внимание визуальным аспектам: цветовой контраст между текстом и фоном, читаемость заголовков, размер шрифта, отступы.
+- Выяви, где пользователи кликают по элементам, которые не являются ссылками (например, по тексту, который выглядит как ссылка, но не ведёт никуда).
+- Обрати внимание на аномально короткие сессии (менее 100 мс) – возможно, это техническая ошибка или мгновенный уход.
+
+Формат ответа:
+
+## Проблемы
+- **Проблема 1**: описание (где, что не так). (ссылка на метрику: «70% пользователей уходят за 2 секунды»)
+- ...
+
+## Рекомендации
+- **Рекомендация 1**: конкретное действие, понятное не-разработчику. (Приоритет: высокий/средний/низкий)
+- ...
+
+## Приоритетность действий
+- Сначала исправить: [высокий приоритет]
+- Затем: [средний]
+- В последнюю очередь: [низкий]
+
+Ответ дай на русском языке, кратко, без воды.`;
+
     const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
+
+    function formatContrastIssues(issues) {
+        if (!issues || issues.length === 0) return "Не обнаружено проблем с контрастностью текста (все элементы соответствуют WCAG).";
+        let text = "Обнаружены проблемы с контрастностью текста:\n";
+        for (let issue of issues) {
+            text += `- Элемент: ${issue.element} (текст: "${issue.text}"). Контраст ${issue.contrast}:1 при норме ${issue.required}:1. Цвет текста ${issue.color}, фон ${issue.backgroundColor}.\n`;
+        }
+        return text;
+    }
 
     function restoreCheckboxesState() {
         if (selectedPagesHashes.size === 0) return;
@@ -884,7 +988,6 @@
             const infoSpan = document.getElementById('loadedPagesInfo');
             if (infoSpan) infoSpan.innerText = '';
         }
-        // Восстанавливаем значение лимита
         const limitInput = document.getElementById('limitInput');
         if (limitInput && sessionStorage.getItem('limitValue')) {
             limitInput.value = sessionStorage.getItem('limitValue');
@@ -903,7 +1006,6 @@
     }
 
     function showAdminPanel() {
-        // Восстанавливаем сохранённое состояние
         const savedDom = sessionStorage.getItem('pagesDom');
         const savedHashes = sessionStorage.getItem('selectedPagesHashes');
         if (savedDom && savedHashes) {
@@ -947,7 +1049,7 @@
             </div>
         `;
 
-        // Стили для ответа LLM
+        // Стили для ответа LLM (включая отрицательные отступы)
         const style = document.createElement('style');
         style.textContent = `
             .llm-response-text * {
@@ -961,19 +1063,20 @@
                 color: #005f73;
             }
             .llm-response-text p {
-                margin: 0.2em 0 !important;
+                margin: -1.5em 0 !important;
             }
             .llm-response-text ul, .llm-response-text ol {
-                margin: 0.1em 0 0.2em 1.5em !important;
-                padding-left: 0 !important;
+                margin-top: -0.9em !important;
+                margin-bottom: 0.2em !important;
+                padding-left: 1.5em !important;
             }
             .llm-response-text li {
-                margin: 0.05em 0 !important;
+                margin: -0.50em 0 !important;
             }
         `;
         document.head.appendChild(style);
 
-        function updateSelectAll(){
+        function updateSelectAll() {
             let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
             let allChecked = Array.from(all).every(cb=>cb.checked);
             let selectAll = document.getElementById('selectAllCheckbox');
@@ -1040,14 +1143,19 @@
             try{
                 let metrics=await fetchMetrics(limit);
                 let metricsJson=JSON.stringify(metrics,null,2);
-                let pagesCode=''; for(let [hash,html] of Object.entries(pagesDom)) pagesCode+=`\n===== СТРАНИЦА: ${hash} =====\n${html}`;
+                let pagesCode='';
+                for(let [hash, pageData] of Object.entries(pagesDom)){
+                    pagesCode += `\n===== СТРАНИЦА: ${hash} =====\n${pageData.html}\n`;
+                    if(pageData.contrastIssues && pageData.contrastIssues.length){
+                        pagesCode += `--- ПРОБЛЕМЫ КОНТРАСТА ---\n${formatContrastIssues(pageData.contrastIssues)}\n`;
+                    }
+                }
                 let content=`---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
                 let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:'text/plain'})); a.download='full_export.txt'; a.click(); URL.revokeObjectURL(a.href);
                 statusDiv.innerText='Готово!';
             }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
         };
 
-        // Функция для скачивания массива файлов
         function downloadMultipleFiles(filesArray) {
             filesArray.forEach((file, index) => {
                 setTimeout(() => {
@@ -1060,7 +1168,7 @@
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
-                }, index * 500); // задержка, чтобы браузер не блокировал
+                }, index * 500);
             });
         }
 
@@ -1084,15 +1192,14 @@
                     return;
                 }
                 const files = [];
-                // Индивидуальные запросы для каждой страницы
                 for (let i = 0; i < pageEntries.length; i++) {
-                    const [hash, pageHtml] = pageEntries[i];
+                    const [hash, pageData] = pageEntries[i];
                     let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
                                document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                    const query = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageHtml}`;
+                    const contrastReport = formatContrastIssues(pageData.contrastIssues);
+                    const query = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${contrastReport}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
                     files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
                 }
-                // Группирующий запрос (имитация)
                 const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
                 const groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
                 files.push({ name: 'grouping_request.txt', content: groupQuery });
@@ -1124,11 +1231,12 @@
             const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
             const modelName='devstral-2:123b-cloud';
             for(let i=0;i<pageEntries.length;i++){
-                let [hash,pageHtml]=pageEntries[i];
+                let [hash, pageData]=pageEntries[i];
                 let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
                            document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
                 statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
-                let query=`${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageHtml}`;
+                const contrastReport = formatContrastIssues(pageData.contrastIssues);
+                let query=`${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${contrastReport}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
                 try{
                     let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1138,8 +1246,17 @@
                 updateProgress(1 + i+1);
             }
             statusDiv.innerText='Группировка ответов...';
-            let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
-            // Сохраняем группирующий запрос как lastQuery (для скачивания)
+            // Собираем все визуальные проблемы со всех страниц в один отчёт
+            let allContrastIssues = [];
+            for (let [hash, pageData] of pageEntries) {
+                if (pageData.contrastIssues && pageData.contrastIssues.length) {
+                    let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                               document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                    allContrastIssues.push(`=== Страница: ${name} ===\n${formatContrastIssues(pageData.contrastIssues)}`);
+                }
+            }
+            const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
+            let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
             lastQuery = groupQuery;
             try{
                 let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
