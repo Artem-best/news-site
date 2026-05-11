@@ -663,14 +663,22 @@
     let pagesDom = {};
     let selectedPagesHashes = new Set();
 
-    function loadMarked() {
-        if (typeof marked !== 'undefined') return;
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
-        script.async = false;
-        document.head.appendChild(script);
+    // Подключение marked и html2pdf
+    function loadScripts() {
+        if (typeof marked === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            script.async = false;
+            document.head.appendChild(script);
+        }
+        if (typeof html2pdf === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+            script.async = false;
+            document.head.appendChild(script);
+        }
     }
-    loadMarked();
+    loadScripts();
 
     function captureCurrentDom() {
         const cloneDoc = document.cloneNode(true);
@@ -745,13 +753,13 @@
         categories.forEach(cat => {
             const catArticles = articles.filter(a => a.category === cat.id);
             html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
-                <strong><a href="#${cat.hash}">${cat.name}</a></strong>
+                <strong><a href="${cat.hash}">${cat.name}</a></strong>
                 <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0; justify-self: end;">
             </div>`;
             rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
             catArticles.forEach(art => {
                 html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-left: 16px;">
-                    <a href="#${art.hash}">${art.name}</a>
+                    <a href="${art.hash}">${art.name}</a>
                     <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0; justify-self: end;">
                 </div>`;
                 rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
@@ -788,7 +796,6 @@
             } catch(e) { console.error(e); }
         }
         pagesDom = newPagesDom;
-        // Сохраняем состояние в sessionStorage
         sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
         sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
         document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
@@ -802,7 +809,7 @@
                     let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
                     if (catCb) name = catCb.parentElement.innerText.trim();
                 }
-                return `<a href="#" onclick="location.hash='${h}'; return false;">${name}</a>`;
+                return `<a href="${h}">${name}</a>`;
             }).join(', ');
             document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
         } else {
@@ -918,7 +925,7 @@
                     let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
                     if (catCb) name = catCb.parentElement.innerText.trim();
                 }
-                return `<a href="#" onclick="location.hash='${h}'; return false;">${name}</a>`;
+                return `<a href="${h}">${name}</a>`;
             }).join(', ');
             const currentPageInfo = document.getElementById('currentPageInfo');
             const loadedPagesInfo = document.getElementById('loadedPagesInfo');
@@ -944,7 +951,7 @@
     }
 
     function showAdminPanel() {
-        // Восстанавливаем сохранённое состояние из sessionStorage
+        // Восстанавливаем сохранённое состояние
         const savedDom = sessionStorage.getItem('pagesDom');
         const savedHashes = sessionStorage.getItem('selectedPagesHashes');
         if (savedDom && savedHashes) {
@@ -961,17 +968,44 @@
                 <div style="margin-top:15px;">${pagesTreeHtml}</div>
                 <div style="margin-top:10px;"><button id="loadPagesBtn">Загрузить выбранные страницы</button> <span id="loadedPagesInfo" style="margin-left:15px;"></span></div>
                 <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color:#005f73;">Анализируемые страницы: не выбраны</div>
-                <div style="margin-top:20px;"><button id="exportMetricsBtn">Получить метрики</button> <button id="exportFullBtn">Получить полный файл для анализа</button> <button id="sendToLLMBtn" style="background-color:#6c757d;">Отправить в LLM</button></div>
+                <div style="margin-top:20px;">
+                    <button id="exportMetricsBtn">Получить метрики</button>
+                    <button id="exportFullBtn">Получить полный файл для анализа</button>
+                    <button id="sendToLLMBtn" style="background-color:#6c757d;">Отправить в LLM</button>
+                </div>
                 <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
                 <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
                 <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
                     <h3>Ответ от LLM</h3>
-                    <div id="llmResponseText" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto;"></div>
-                    <div style="margin-top:10px;"><button id="downloadQueryBtn">Скачать запрос</button> <button id="downloadAnswerBtn">Скачать ответ</button></div>
+                    <div id="llmResponseText" class="llm-response-text" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto;"></div>
+                    <div style="margin-top:10px;">
+                        <button id="downloadQueryBtn">Скачать запрос</button>
+                        <button id="downloadAnswerBtn">Скачать TXT</button>
+                        <button id="downloadPDFBtn">Скачать PDF</button>
+                    </div>
                 </div>
             </div>
         `;
-        document.getElementById('llmResponseText').classList.add('llm-response-text');
+
+        // Минимальные отступы для ответа LLM
+        const style = document.createElement('style');
+        style.textContent = `
+            .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
+                margin: 0.2em 0 0.1em 0;
+                color: #005f73;
+            }
+            .llm-response-text p {
+                margin: 0.2em 0;
+            }
+            .llm-response-text ul, .llm-response-text ol {
+                margin: 0.1em 0 0.2em 0;
+                padding-left: 1.5em;
+            }
+            .llm-response-text li {
+                margin: 0.05em 0;
+            }
+        `;
+        document.head.appendChild(style);
 
         function updateSelectAll(){
             let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
@@ -1010,6 +1044,7 @@
         let llmResponseText = document.getElementById('llmResponseText');
         let downloadQueryBtn = document.getElementById('downloadQueryBtn');
         let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
+        let downloadPDFBtn = document.getElementById('downloadPDFBtn');
         let lastQuery='', lastAnswer='';
 
         loadBtn.onclick = loadSelectedPages;
@@ -1100,8 +1135,14 @@
                 }
             } else lastAnswer+='\n\n## Анализ контрастности\nВсе текстовые элементы имеют достаточную контрастность (≥4.5) и нет проблемных цветовых сочетаний.';
             updateProgress(totalSteps);
-            let formatted = (typeof marked!=='undefined') ? marked.parse(lastAnswer) : lastAnswer.replace(/\n/g,'<br>');
-            llmResponseText.innerHTML=formatted;
+            // Рендерим Markdown
+            if (typeof marked !== 'undefined') {
+                marked.parse(lastAnswer, (err, result) => {
+                    llmResponseText.innerHTML = result || lastAnswer;
+                });
+            } else {
+                llmResponseText.innerHTML = lastAnswer.replace(/\n/g, '<br>');
+            }
             llmResponseDiv.style.display='block';
             let elapsed=((performance.now()-startTime)/1000).toFixed(2);
             statusDiv.innerText=`Готово! Время выполнения: ${elapsed} сек.`;
@@ -1110,8 +1151,27 @@
 
         downloadQueryBtn.onclick = () => { if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'})); a.download='llm_query.txt'; a.click(); URL.revokeObjectURL(a.href); };
         downloadAnswerBtn.onclick = () => { if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href); };
+        downloadPDFBtn.onclick = () => {
+            if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; }
+            if(typeof html2pdf === 'undefined'){ errorDiv.innerText='Библиотека PDF не загружена.'; return; }
+            // Создаём временный элемент для рендеринга PDF
+            const tempDiv = document.createElement('div');
+            tempDiv.style.padding = '20px';
+            tempDiv.style.fontFamily = 'Arial, sans-serif';
+            if (typeof marked !== 'undefined') {
+                marked.parse(lastAnswer, (err, result) => {
+                    tempDiv.innerHTML = result || lastAnswer;
+                    const opt = { margin: 1, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+                    html2pdf().set(opt).from(tempDiv).save();
+                });
+            } else {
+                tempDiv.innerHTML = lastAnswer.replace(/\n/g, '<br>');
+                const opt = { margin: 1, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+                html2pdf().set(opt).from(tempDiv).save();
+            }
+        };
 
-        // Восстанавливаем состояние чекбоксов и информацию о загруженных страницах
+        // Восстанавливаем состояние чекбоксов и информации
         restoreCheckboxesState();
     }
 
