@@ -550,7 +550,7 @@
                         domContentLoaded: perfData.domContentLoadedEventEnd - perfData.navigationStart,
                         loadEventEnd: perfData.loadEventEnd - perfData.navigationStart,
                     };
-                    Object.s(metrics).forEach(k => { if (metrics[k] < 0) metrics[k] = 0; });
+                    Object.keys(metrics).forEach(k => { if (metrics[k] < 0) metrics[k] = 0; });
                     sendEvent('performance_metrics', { type: 'page_load', url: window.location.pathname + window.location.hash, ...metrics });
                 }, 0);
             });
@@ -1001,7 +1001,7 @@
                 const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
                 updateProgress(1);
                 let individualAnswers=[];
-                const targetApi='https://diletant.site:4222/test', api='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf', modelName='devstral-2:123b-cloud';
+                const targetApi='https://diletant.site:4222/test', apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf', modelName='devstral-2:123b-cloud';
                 for(let i=0;i<pageEntries.length;i++){
                     let [hash,pageHtml]=pageEntries[i];
                     let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
