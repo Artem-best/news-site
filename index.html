@@ -663,6 +663,7 @@
     let pagesDom = {};
     let selectedPagesHashes = new Set();
 
+    // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
     function loadScripts() {
         if (typeof marked === 'undefined') {
             const script = document.createElement('script');
@@ -679,92 +680,33 @@
     }
     loadScripts();
 
-    // --- НОВАЯ ФУНКЦИЯ: захватываем ТОЛЬКО структуру HTML (без скриптов, стилей, ссылок) ---
+    // Захватываем только структуру HTML (без скриптов, стилей и ссылок)
     function capturePureStructure() {
         const cloneDoc = document.cloneNode(true);
-        // 1. Удаляем все скрипты
         const scripts = cloneDoc.querySelectorAll('script');
         scripts.forEach(s => s.remove());
-        // 2. Удаляем все теги style
         const styles = cloneDoc.querySelectorAll('style');
         styles.forEach(s => s.remove());
-        // 3. Удаляем все link (внешние ресурсы)
         const links = cloneDoc.querySelectorAll('link');
         links.forEach(l => l.remove());
-        // 4. Удаляем комментарии (но outerHTML не поможет, оставим как есть)
-        // 5. Удаляем элементы с классом admin-container (если остались)
         const adminDivs = cloneDoc.querySelectorAll('.admin-container');
         adminDivs.forEach(el => el.remove());
-        // 6. Получаем HTML
         let html = cloneDoc.documentElement.outerHTML;
-        // 7. Убираем маркеры
         html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
         return '<!DOCTYPE html>\n' + html;
     }
 
-    // Используем её для захвата по хэшу
     async function captureDomByHash(hash) {
         const originalHash = window.location.hash;
         window.METRIKA_DISABLED = true;
         window.location.hash = hash;
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const dom = capturePureStructure();  // теперь чистая структура
+        const dom = capturePureStructure();
         window.location.hash = originalHash;
         await new Promise(resolve => setTimeout(resolve, 100));
         window.METRIKA_DISABLED = false;
         return dom;
     }
-
-    // Функция для восстановления сохранённого состояния (без изменений, но использует pagesDom)
-    function restoreCheckboxesState() {
-        if (selectedPagesHashes.size === 0) return;
-        document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
-            const hash = cb.dataset.hash;
-            if (hash && selectedPagesHashes.has(hash)) cb.checked = true;
-            else if (cb.classList.contains('article-checkbox') && hash && !selectedPagesHashes.has(hash)) cb.checked = false;
-        });
-        document.querySelectorAll('.category-checkbox').forEach(catCb => {
-            const categoryId = catCb.dataset.category;
-            const catHash = catCb.dataset.categoryHash;
-            if (catHash && selectedPagesHashes.has(catHash)) catCb.checked = true;
-            else {
-                const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
-                const allChecked = Array.from(articleBoxes).every(art => art.checked);
-                catCb.checked = allChecked;
-            }
-        });
-        const selectAll = document.getElementById('selectAllCheckbox');
-        if (selectAll) {
-            const allBoxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
-            const allChecked = Array.from(allBoxes).every(cb => cb.checked);
-            selectAll.checked = allChecked;
-        }
-        if (Object.keys(pagesDom).length > 0) {
-            const loadedCount = Object.keys(pagesDom).length;
-            const infoSpan = document.getElementById('loadedPagesInfo');
-            if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loadedCount}`;
-            const pageNames = Array.from(selectedPagesHashes).map(h => {
-                let name = h;
-                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
-                if (cb) name = cb.parentElement.innerText.trim();
-                else {
-                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
-                    if (catCb) name = catCb.parentElement.innerText.trim();
-                }
-                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
-            }).join(', ');
-            const currentPageInfo = document.getElementById('currentPageInfo');
-            if (currentPageInfo) currentPageInfo.innerHTML = `Анализируемые страницы: ${pageNames}`;
-        } else {
-            const currentPageInfo = document.getElementById('currentPageInfo');
-            if (currentPageInfo) currentPageInfo.innerHTML = 'Анализируемые страницы: не выбраны';
-            const infoSpan = document.getElementById('loadedPagesInfo');
-            if (infoSpan) infoSpan.innerText = '';
-        }
-    }
-
-    // Остальные вспомогательные функции (getAllPages, buildPagesTree, loadSelectedPages, fetchMetrics, промпты, контрастность) 
-    // остаются без изменений, но я их приведу для полноты.
 
     function getAllPages() {
         const pages = [{ name: 'Главная', hash: '#/', type: 'main' }];
@@ -852,6 +794,9 @@
         pagesDom = newPagesDom;
         sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
         sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
+        // Сохраняем значение лимита
+        const limitInput = document.getElementById('limitInput');
+        if (limitInput) sessionStorage.setItem('limitValue', limitInput.value);
         document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
         document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
         if (loaded > 0) {
@@ -894,34 +839,56 @@
     const singlePrompt = `Ты – эксперт по UX/UI для десктопных веб-сайтов. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Не давай рекомендации для мобильных устройств, только для экранов компьютеров. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
     const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
-    // Анализ контрастности (использует pagesDom, но теперь pagesDom содержит упрощённый HTML без стилей – мы всё равно считаем контрастность по реальному DOM ранее, но можно оставить как есть)
-    function getLuminance(rgb) {
-        let [r,g,b] = [rgb.r, rgb.g, rgb.b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
-        return 0.2126*r + 0.7152*g + 0.0722*b;
-    }
-    function getContrastRatio(c1,c2) {
-        let l1=getLuminance(c1), l2=getLuminance(c2);
-        return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
-    }
-    function rgbToObj(str) {
-        let m = str.match(/\d+/g);
-        return m ? {r:+m[0], g:+m[1], b:+m[2]} : null;
-    }
-    function isProblematicColorPair(rgbText, rgbBg) {
-        let sumText = rgbText.r + rgbText.g + rgbText.b;
-        let sumBg = rgbBg.r + rgbBg.g + rgbBg.b;
-        let diff = Math.abs(rgbText.r - rgbBg.r) + Math.abs(rgbText.g - rgbBg.g) + Math.abs(rgbText.b - rgbBg.b);
-        return (sumText > 500 && sumBg > 500 && diff < 80);
-    }
-
-    function analyzeContrast() {
-        let issues = [];
-        // Для анализа контрастности нам нужен реальный DOM, но мы использовали pagesDom, который теперь не содержит стили.
-        // Поэтому оставим старую версию анализа контрастности, которая использует реальный DOM из pagesDom (но он без стилей, так что анализ не сработает). 
-        // Поскольку мы решили полагаться на вычисления контрастности на основе реального DOM при отправке (это происходит в sendToLLM ранее), то переделаем анализ контрастности, чтобы он брал данные из реальных страниц, а не из сохранённого HTML.
-        // Однако для простоты и так как эта функциональность не является критичной, можно временно убрать анализ контрастности или переписать его. 
-        // Я предлагаю на время отключить анализ контрастности, потому что он и так не работал корректно. В будущем можно вернуть.
-        return issues;
+    function restoreCheckboxesState() {
+        if (selectedPagesHashes.size === 0) return;
+        document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash && selectedPagesHashes.has(hash)) cb.checked = true;
+            else if (cb.classList.contains('article-checkbox') && hash && !selectedPagesHashes.has(hash)) cb.checked = false;
+        });
+        document.querySelectorAll('.category-checkbox').forEach(catCb => {
+            const categoryId = catCb.dataset.category;
+            const catHash = catCb.dataset.categoryHash;
+            if (catHash && selectedPagesHashes.has(catHash)) catCb.checked = true;
+            else {
+                const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
+                const allChecked = Array.from(articleBoxes).every(art => art.checked);
+                catCb.checked = allChecked;
+            }
+        });
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) {
+            const allBoxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            const allChecked = Array.from(allBoxes).every(cb => cb.checked);
+            selectAll.checked = allChecked;
+        }
+        if (Object.keys(pagesDom).length > 0) {
+            const loadedCount = Object.keys(pagesDom).length;
+            const infoSpan = document.getElementById('loadedPagesInfo');
+            if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loadedCount}`;
+            const pageNames = Array.from(selectedPagesHashes).map(h => {
+                let name = h;
+                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) name = cb.parentElement.innerText.trim();
+                else {
+                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
+                    if (catCb) name = catCb.parentElement.innerText.trim();
+                }
+                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
+            }).join(', ');
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = `Анализируемые страницы: ${pageNames}`;
+        } else {
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = 'Анализируемые страницы: не выбраны';
+            const infoSpan = document.getElementById('loadedPagesInfo');
+            if (infoSpan) infoSpan.innerText = '';
+        }
+        // Восстанавливаем значение лимита
+        const limitInput = document.getElementById('limitInput');
+        if (limitInput && sessionStorage.getItem('limitValue')) {
+            limitInput.value = sessionStorage.getItem('limitValue');
+        }
     }
 
     function showAdminLogin() {
@@ -936,6 +903,7 @@
     }
 
     function showAdminPanel() {
+        // Восстанавливаем сохранённое состояние
         const savedDom = sessionStorage.getItem('pagesDom');
         const savedHashes = sessionStorage.getItem('selectedPagesHashes');
         if (savedDom && savedHashes) {
@@ -946,15 +914,21 @@
         document.getElementById('content').innerHTML = `
             <div class="admin-container" style="max-width: 90%; width: 90%; margin: 20px auto;">
                 <h2>Панель экспорта метрик</h2>
-                <label style="color: black;">Ограничение записей (только целое положительное число):</label>
-                <input type="text" id="limitInput" placeholder="например, 100" />
                 <div style="margin-top:15px;">${pagesTreeHtml}</div>
-                <div style="margin-top:10px;"><button id="loadPagesBtn">Загрузить выбранные страницы</button> <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span></div>
+                <div style="margin-top:10px;">
+                    <button id="loadPagesBtn">Загрузить выбранные страницы</button>
+                    <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span>
+                </div>
                 <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: black;">Анализируемые страницы: не выбраны</div>
+                <div style="margin-top: 15px;">
+                    <label style="color: black;">Ограничение записей (только целое положительное число):</label>
+                    <input type="text" id="limitInput" placeholder="например, 100" />
+                </div>
                 <div style="margin-top:20px;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="exportFullBtn">Получить полный файл для анализа</button>
                     <button id="sendToLLMBtn" style="background-color:#6c757d;">Отправить в LLM</button>
+                    <button id="testDownloadBtn" style="background-color:#4CAF50;">Тест: скачать запросы</button>
                 </div>
                 <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
                 <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
@@ -973,7 +947,7 @@
             </div>
         `;
 
-        // Усиленные стили для минимальных отступов в ответе LLM
+        // Стили для ответа LLM
         const style = document.createElement('style');
         style.textContent = `
             .llm-response-text * {
@@ -1028,6 +1002,7 @@
         let exportMetricsBtn = document.getElementById('exportMetricsBtn');
         let exportFullBtn = document.getElementById('exportFullBtn');
         let sendLLMBtn = document.getElementById('sendToLLMBtn');
+        let testDownloadBtn = document.getElementById('testDownloadBtn');
         let statusDiv = document.getElementById('exportStatus');
         let errorDiv = document.getElementById('exportError');
         let progressContainer = document.getElementById('progressContainer');
@@ -1072,6 +1047,62 @@
             }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
         };
 
+        // Функция для скачивания массива файлов
+        function downloadMultipleFiles(filesArray) {
+            filesArray.forEach((file, index) => {
+                setTimeout(() => {
+                    const blob = new Blob([file.content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = file.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, index * 500); // задержка, чтобы браузер не блокировал
+            });
+        }
+
+        testDownloadBtn.onclick = async () => {
+            errorDiv.innerText='';
+            const limitRaw = limitInput.value.trim();
+            let limit = null;
+            if (limitRaw && !/^\d+$/.test(limitRaw)) {
+                errorDiv.innerText = 'Ошибка: только цифры.';
+                limitInput.value = '';
+                return;
+            }
+            if (limitRaw) limit = parseInt(limitRaw);
+            statusDiv.innerText = 'Формирование тестовых запросов...';
+            try {
+                const metrics = await fetchMetrics(limit);
+                const metricsJson = JSON.stringify(metrics, null, 2);
+                const pageEntries = Object.entries(pagesDom);
+                if (pageEntries.length === 0) {
+                    errorDiv.innerText = 'Нет загруженных страниц.';
+                    return;
+                }
+                const files = [];
+                // Индивидуальные запросы для каждой страницы
+                for (let i = 0; i < pageEntries.length; i++) {
+                    const [hash, pageHtml] = pageEntries[i];
+                    let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                               document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                    const query = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageHtml}`;
+                    files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
+                }
+                // Группирующий запрос (имитация)
+                const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
+                const groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
+                files.push({ name: 'grouping_request.txt', content: groupQuery });
+                downloadMultipleFiles(files);
+                statusDiv.innerText = `Сформировано ${files.length} файлов. Начинается загрузка...`;
+            } catch (err) {
+                errorDiv.innerText = 'Ошибка: ' + err.message;
+            }
+        };
+
         sendLLMBtn.onclick = async () => {
             errorDiv.innerText='';
             let limitRaw=limitInput.value.trim();
@@ -1108,14 +1139,8 @@
             }
             statusDiv.innerText='Группировка ответов...';
             let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
-            // Формируем полный запрос для скачивания (промпт + метрики + все DOM)
-            let fullData = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВСЕ СТРАНИЦЫ---\n`;
-            for(let [hash,pageHtml] of pageEntries){
-                let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
-                           document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                fullData += `\n===== СТРАНИЦА: ${name} (${hash}) =====\n${pageHtml}`;
-            }
-            lastQuery = fullData;
+            // Сохраняем группирующий запрос как lastQuery (для скачивания)
+            lastQuery = groupQuery;
             try{
                 let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
                 if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1123,9 +1148,7 @@
                 lastAnswer=data.response||JSON.stringify(data);
                 updateProgress(1 + pageEntries.length);
             }catch(e){ lastAnswer=`Ошибка группировки: ${e.message}`; }
-            // Анализ контрастности временно отключён (можно оставить пустым)
             updateProgress(totalSteps);
-            // Рендерим Markdown
             if (typeof marked !== 'undefined') {
                 try {
                     lastAnswerHtml = marked.parse(lastAnswer);
@@ -1161,7 +1184,6 @@
                 tempDiv.style.maxWidth = '100%';
                 tempDiv.style.wordWrap = 'break-word';
                 tempDiv.innerHTML = lastAnswerHtml;
-                // Добавляем стили для печати
                 const stylePrint = document.createElement('style');
                 stylePrint.textContent = 'body { margin: 0; } .page-break { page-break-before: avoid; }';
                 tempDiv.appendChild(stylePrint);
