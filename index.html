@@ -672,10 +672,7 @@
             document.head.appendChild(script);
         }
         if (typeof html2pdf === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-            script.async = false;
-            document.head.appendChild(script);
+            // больше не нужен, но оставим для совместимости
         }
     }
     loadScripts();
@@ -774,7 +771,6 @@
         scripts.forEach(s => s.remove());
         const adminDivs = cloneDoc.querySelectorAll('.admin-container');
         adminDivs.forEach(el => el.remove());
-        // Удаляем стили, добавленные админ-панелью (содержат .llm-response-text)
         const styles = cloneDoc.querySelectorAll('style');
         styles.forEach(style => {
             if (style.textContent.includes('.llm-response-text')) {
@@ -970,6 +966,12 @@
         return text;
     }
 
+    // Очистка пустых строк (удаляем строки, состоящие только из пробелов и табуляций)
+    function cleanEmptyLines(str) {
+        if (!str) return str;
+        return str.split('\n').filter(line => line.trim().length > 0).join('\n');
+    }
+
     function restoreCheckboxesState() {
         if (selectedPagesHashes.size === 0) return;
         document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
@@ -1019,6 +1021,10 @@
         if (limitInput && sessionStorage.getItem('limitValue')) {
             limitInput.value = sessionStorage.getItem('limitValue');
         }
+        const groupingCheckbox = document.getElementById('groupingCheckbox');
+        if (groupingCheckbox && sessionStorage.getItem('groupingEnabled') !== null) {
+            groupingCheckbox.checked = sessionStorage.getItem('groupingEnabled') === 'true';
+        }
     }
 
     function showAdminLogin() {
@@ -1049,20 +1055,24 @@
                     <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span>
                 </div>
                 <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: black;">Анализируемые страницы: не выбраны</div>
-                <div style="margin-top: 15px; display: flex; align-items: center; gap: 20px;">
+                <div style="margin-top: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <label style="color: black; white-space: nowrap;">Лимит записей:</label>
                         <input type="text" id="limitInput" placeholder="100" style="width: 80px;" />
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
                         <input type="checkbox" id="plainLanguageCheckbox">
-                        <label style="color: black; white-space: normal;">Без упоминания кода (запретить CSS-свойства, hex-коды, теги)</label>
+                        <label style="color: black; white-space: nowrap;">Без упоминания кода (запретить CSS-свойства, hex-коды, теги)</label>
                     </div>
                 </div>
-                <div style="margin-top:20px;">
+                <div style="margin-top:20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="testDownloadBtn" style="background-color:#4CAF50;">Тест: скачать запросы</button>
                     <button id="sendToLLMBtn" style="background-color:#6c757d;">Получить рекомендации</button>
+                    <div style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
+                        <input type="checkbox" id="groupingCheckbox" checked>
+                        <label style="color: black; white-space: nowrap;">Группировать рекомендации</label>
+                    </div>
                 </div>
                 <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
                 <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
@@ -1073,14 +1083,14 @@
                         <button id="downloadAnswerBtn">Скачать рекомендации</button>
                         <select id="downloadFormatSelect" style="margin-left: 10px; padding: 5px;">
                             <option value="txt">TXT</option>
-                            <option value="pdf">PDF</option>
+                            <option value="md">MD</option>
                         </select>
                     </div>
                 </div>
             </div>
         `;
 
-        // Стили для отображения ответа LLM (только для админ-панели, не попадают в захват)
+        // Стили для отображения ответа LLM (только для админ-панели)
         const style = document.createElement('style');
         style.textContent = `
             .llm-response-text * {
@@ -1144,7 +1154,17 @@
         let llmResponseText = document.getElementById('llmResponseText');
         let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
         let downloadFormatSelect = document.getElementById('downloadFormatSelect');
-        let lastQuery='', lastAnswer='', lastAnswerHtml='';
+        let lastQuery = '', lastAnswer = '', lastAnswerHtml = '';
+
+        // Сохраняем состояние чекбокса группировки
+        const groupingCheckbox = document.getElementById('groupingCheckbox');
+        if (groupingCheckbox) {
+            groupingCheckbox.addEventListener('change', () => {
+                sessionStorage.setItem('groupingEnabled', groupingCheckbox.checked);
+            });
+            const savedGrouping = sessionStorage.getItem('groupingEnabled');
+            if (savedGrouping !== null) groupingCheckbox.checked = savedGrouping === 'true';
+        }
 
         loadBtn.onclick = loadSelectedPages;
 
@@ -1208,12 +1228,16 @@
                     if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
                         contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
                     }
-                    const query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                    let query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                    query = cleanEmptyLines(query);
                     files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
                 }
-                const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
-                const groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
-                files.push({ name: 'grouping_request.txt', content: groupQuery });
+                if (groupingCheckbox && groupingCheckbox.checked) {
+                    const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
+                    let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
+                    groupQuery = cleanEmptyLines(groupQuery);
+                    files.push({ name: 'grouping_request.txt', content: groupQuery });
+                }
                 downloadMultipleFiles(files);
                 statusDiv.innerText = `Сформировано ${files.length} файлов. Начинается загрузка...`;
             } catch (err) {
@@ -1232,7 +1256,8 @@
             try{ let metrics=await fetchMetrics(limit); metricsJson=JSON.stringify(metrics,null,2); } catch(e){ errorDiv.innerText='Ошибка метрик: '+e.message; return; }
             let pageEntries=Object.entries(pagesDom);
             if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
-            let totalSteps = 1 + pageEntries.length + 1;
+            let totalSteps = 1 + pageEntries.length;
+            if (groupingCheckbox && groupingCheckbox.checked) totalSteps += 1; // + группировка
             let currentStep = 1;
             progressContainer.style.display='block';
             const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
@@ -1252,7 +1277,8 @@
                 if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
                     contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
                 }
-                let query=`${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                let query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                query = cleanEmptyLines(query);
                 try{
                     let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1261,26 +1287,33 @@
                 }catch(e){ individualAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${name} ---\n${e.message}`); }
                 updateProgress(1 + i+1);
             }
-            statusDiv.innerText='Группировка ответов...';
-            // Собираем все визуальные проблемы со всех страниц в один отчёт (только если есть)
-            let allContrastIssues = [];
-            for (let [hash, pageData] of pageEntries) {
-                if (pageData.contrastIssues && pageData.contrastIssues.length) {
-                    let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
-                               document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                    allContrastIssues.push(`=== Страница: ${name} ===\n${formatContrastIssues(pageData.contrastIssues)}`);
+            if (groupingCheckbox && groupingCheckbox.checked) {
+                statusDiv.innerText='Группировка ответов...';
+                let allContrastIssues = [];
+                for (let [hash, pageData] of pageEntries) {
+                    if (pageData.contrastIssues && pageData.contrastIssues.length) {
+                        let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                                   document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                        allContrastIssues.push(`=== Страница: ${name} ===\n${formatContrastIssues(pageData.contrastIssues)}`);
+                    }
                 }
+                const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
+                let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
+                groupQuery = cleanEmptyLines(groupQuery);
+                lastQuery = groupQuery;
+                try{
+                    let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
+                    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    let data=await resp.json();
+                    lastAnswer = data.response || JSON.stringify(data);
+                    updateProgress(1 + pageEntries.length);
+                }catch(e){ lastAnswer = `Ошибка группировки: ${e.message}`; }
+            } else {
+                // Без группировки: просто объединяем индивидуальные ответы
+                lastAnswer = individualAnswers.join('\n\n');
+                lastQuery = ''; // не сохраняем запрос
+                updateProgress(totalSteps);
             }
-            const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
-            let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
-            lastQuery = groupQuery;
-            try{
-                let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
-                if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                let data=await resp.json();
-                lastAnswer=data.response||JSON.stringify(data);
-                updateProgress(1 + pageEntries.length);
-            }catch(e){ lastAnswer=`Ошибка группировки: ${e.message}`; }
             updateProgress(totalSteps);
             if (typeof marked !== 'undefined') {
                 try {
@@ -1303,41 +1336,10 @@
             const format = downloadFormatSelect.value;
             if(format === 'txt'){
                 let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href);
-            } else if(format === 'pdf'){
-                if(typeof html2pdf === 'undefined'){ errorDiv.innerText='Библиотека PDF не загружена.'; return; }
-                // Создаём временный div для PDF с нормальными отступами
-                const tempDiv = document.createElement('div');
-                tempDiv.style.padding = '15px';
-                tempDiv.style.fontFamily = 'Arial, sans-serif';
-                tempDiv.style.fontSize = '12pt';
-                tempDiv.style.lineHeight = '1.4';
-                tempDiv.style.maxWidth = '100%';
-                tempDiv.style.wordWrap = 'break-word';
-                tempDiv.innerHTML = lastAnswerHtml;
-                // Добавляем стили, которые переопределяют отрицательные отступы
-                const pdfStyle = document.createElement('style');
-                pdfStyle.textContent = `
-                    .llm-response-text p, .llm-response-text ul, .llm-response-text ol, .llm-response-text li {
-                        margin: 0 0 0.5em 0 !important;
-                    }
-                    .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
-                        margin: 0.5em 0 0.3em 0 !important;
-                    }
-                    .llm-response-text ul, .llm-response-text ol {
-                        padding-left: 1.5em !important;
-                    }
-                `;
-                tempDiv.appendChild(pdfStyle);
-                const opt = { 
-                    margin: [0.5, 0.5, 0.5, 0.5], 
-                    filename: 'llm_response.pdf', 
-                    image: { type: 'jpeg', quality: 0.98 }, 
-                    html2canvas: { scale: 2, letterRendering: true }, 
-                    jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } 
-                };
-                html2pdf().set(opt).from(tempDiv).save();
-           }
-};
+            } else if(format === 'md'){
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/markdown'})); a.download='llm_response.md'; a.click(); URL.revokeObjectURL(a.href);
+            }
+        };
 
         restoreCheckboxesState();
     }
