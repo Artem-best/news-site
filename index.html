@@ -660,7 +660,7 @@
 (function() {
     let adminActive = false;
     let originalContent = null;
-    let pagesDom = {};      // { "hash": { html: "...", contrastIssues: [...] } }
+    let pagesDom = {};
     let selectedPagesHashes = new Set();
 
     // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
@@ -680,7 +680,7 @@
     }
     loadScripts();
 
-    // Функции контрастности
+    // --- Улучшенные функции для контрастности ---
     function getLuminance(r, g, b) {
         const rsrgb = r / 255;
         const gsrgb = g / 255;
@@ -699,46 +699,62 @@
         return (lighter + 0.05) / (darker + 0.05);
     }
 
-    function parseColorString(colorStr) {
+    function parseColorToRGB(colorStr) {
+        if (colorStr === 'transparent' || colorStr === 'rgba(0, 0, 0, 0)') return null;
         const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
         if (match) {
             return { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) };
         }
-        return { r: 255, g: 255, b: 255 }; // белый fallback
+        return null;
+    }
+
+    function getBackgroundColor(element) {
+        let bg = window.getComputedStyle(element).backgroundColor;
+        if (bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') {
+            if (element.parentElement) {
+                return getBackgroundColor(element.parentElement);
+            } else {
+                return 'rgb(255, 255, 255)';
+            }
+        }
+        return bg;
     }
 
     function getContrastIssues() {
         const issues = [];
-        const selectors = ['h1', 'h2', 'h3', 'p', 'a', '.news-item', '.category-badge', 'header h1', 'nav a', 'footer p'];
+        const selectors = ['h1', 'h2', 'h3', 'p', 'a', '.news-item', '.category-badge', 'header h1', 'nav a', 'footer p', '.meta', '.article-content p'];
         const elements = document.querySelectorAll(selectors.join(','));
         for (let el of elements) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) continue;
             const style = window.getComputedStyle(el);
-            const color = style.color;
-            const bgColor = style.backgroundColor;
-            if (!color || !bgColor || color === 'rgba(0, 0, 0, 0)' || bgColor === 'rgba(0, 0, 0, 0)') continue;
-            const colorParsed = parseColorString(color);
-            const bgParsed = parseColorString(bgColor);
-            const contrast = getContrastRatio(colorParsed, bgParsed);
-            let isLarge = false;
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const colorStr = style.color;
+            const bgStr = getBackgroundColor(el);
+            const colorRGB = parseColorToRGB(colorStr);
+            const bgRGB = parseColorToRGB(bgStr);
+            if (!colorRGB || !bgRGB) continue;
+            const contrast = getContrastRatio(colorRGB, bgRGB);
             const fontSize = parseFloat(style.fontSize);
             const fontWeight = style.fontWeight;
-            if ((fontSize >= 18) || (fontSize >= 14 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700))) {
-                isLarge = true;
-            }
+            let isLarge = false;
+            if (fontSize >= 18) isLarge = true;
+            else if (fontSize >= 14 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) isLarge = true;
             const required = isLarge ? 3.0 : 4.5;
             if (contrast < required) {
                 const textPreview = el.innerText.trim().slice(0, 60);
-                issues.push({
-                    element: el.tagName + (el.id ? '#'+el.id : '') + (el.className ? '.'+el.className : ''),
-                    text: textPreview,
-                    contrast: contrast.toFixed(2),
-                    required: required.toFixed(1),
-                    color: color,
-                    backgroundColor: bgColor
-                });
+                if (textPreview.length > 0) {
+                    issues.push({
+                        element: el.tagName + (el.id ? '#'+el.id : '') + (el.className ? '.'+el.className : ''),
+                        text: textPreview,
+                        contrast: contrast.toFixed(2),
+                        required: required.toFixed(1),
+                        color: colorStr,
+                        backgroundColor: bgStr
+                    });
+                }
             }
         }
-        // Убираем дубликаты
         const unique = [];
         const keys = new Set();
         for (let issue of issues) {
@@ -751,13 +767,20 @@
         return unique.slice(0, 30);
     }
 
+    // Захват DOM с удалением стилей админ-панели
     function capturePureStructureWithContrast() {
         const cloneDoc = document.cloneNode(true);
-        // Удаляем скрипты и админ-блоки, но НЕ удаляем style и link
         const scripts = cloneDoc.querySelectorAll('script');
         scripts.forEach(s => s.remove());
         const adminDivs = cloneDoc.querySelectorAll('.admin-container');
         adminDivs.forEach(el => el.remove());
+        // Удаляем стили, добавленные админ-панелью (содержат .llm-response-text)
+        const styles = cloneDoc.querySelectorAll('style');
+        styles.forEach(style => {
+            if (style.textContent.includes('.llm-response-text')) {
+                style.remove();
+            }
+        });
         let html = cloneDoc.documentElement.outerHTML;
         html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
         html = html.replace(/ on\w+="[^"]*"/gi, '').replace(/ on\w+='[^']*'/gi, '');
@@ -904,7 +927,6 @@
         return result;
     }
 
-    // ========== ПРОМПТЫ ==========
     const singlePrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
 
 ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
@@ -934,8 +956,13 @@
 
     const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
+    function getEnhancedPrompt(avoidCode) {
+        if (!avoidCode) return singlePrompt;
+        return singlePrompt + `\n\nВАЖНО: ЕЩЁ РАЗ – ЗАПРЕЩЕНО использовать любые технические термины: названия CSS-свойств (margin, padding, color и т.д.), hex-коды цветов, названия тегов, классов, id. Даже если они встречаются в метриках или HTML, не цитируйте их. Вместо этого описывайте изменения словами, например: «увеличьте отступ между абзацами», «используйте тёмно-серый цвет текста вместо светло-серого», «сделайте ссылки подчёркнутыми при наведении». Каждая рекомендация должна быть понятна человеку без знания кода.`;
+    }
+
     function formatContrastIssues(issues) {
-        if (!issues || issues.length === 0) return "Не обнаружено проблем с контрастностью текста (все элементы соответствуют WCAG).";
+        if (!issues || issues.length === 0) return null;
         let text = "Обнаружены проблемы с контрастностью текста:\n";
         for (let issue of issues) {
             text += `- Элемент: ${issue.element} (текст: "${issue.text}"). Контраст ${issue.contrast}:1 при норме ${issue.required}:1. Цвет текста ${issue.color}, фон ${issue.backgroundColor}.\n`;
@@ -1026,6 +1053,11 @@
                     <label style="color: black;">Ограничение записей (только целое положительное число):</label>
                     <input type="text" id="limitInput" placeholder="например, 100" />
                 </div>
+                <div style="margin-top: 15px;">
+                    <label style="color: black; display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="plainLanguageCheckbox"> Без упоминания кода (запретить CSS-свойства, hex-коды, теги)
+                    </label>
+                </div>
                 <div style="margin-top:20px;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="exportFullBtn">Получить полный файл для анализа</button>
@@ -1049,7 +1081,7 @@
             </div>
         `;
 
-        // Стили для ответа LLM (включая отрицательные отступы)
+        // Стили для отображения ответа LLM (только для админ-панели, не попадают в захват)
         const style = document.createElement('style');
         style.textContent = `
             .llm-response-text * {
@@ -1191,13 +1223,18 @@
                     errorDiv.innerText = 'Нет загруженных страниц.';
                     return;
                 }
+                const avoidCode = document.getElementById('plainLanguageCheckbox').checked;
+                const finalPrompt = getEnhancedPrompt(avoidCode);
                 const files = [];
                 for (let i = 0; i < pageEntries.length; i++) {
                     const [hash, pageData] = pageEntries[i];
                     let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
                                document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                    const contrastReport = formatContrastIssues(pageData.contrastIssues);
-                    const query = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${contrastReport}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                    let contrastSection = '';
+                    if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
+                        contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
+                    }
+                    const query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
                     files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
                 }
                 const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
@@ -1230,13 +1267,18 @@
             const targetApi='https://diletant.site:4222/test';
             const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
             const modelName='devstral-2:123b-cloud';
+            const avoidCode = document.getElementById('plainLanguageCheckbox').checked;
+            const finalPrompt = getEnhancedPrompt(avoidCode);
             for(let i=0;i<pageEntries.length;i++){
                 let [hash, pageData]=pageEntries[i];
                 let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
                            document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
                 statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
-                const contrastReport = formatContrastIssues(pageData.contrastIssues);
-                let query=`${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${contrastReport}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                let contrastSection = '';
+                if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
+                    contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
+                }
+                let query=`${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
                 try{
                     let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1246,7 +1288,7 @@
                 updateProgress(1 + i+1);
             }
             statusDiv.innerText='Группировка ответов...';
-            // Собираем все визуальные проблемы со всех страниц в один отчёт
+            // Собираем все визуальные проблемы со всех страниц в один отчёт (только если есть)
             let allContrastIssues = [];
             for (let [hash, pageData] of pageEntries) {
                 if (pageData.contrastIssues && pageData.contrastIssues.length) {
