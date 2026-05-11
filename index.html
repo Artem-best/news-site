@@ -733,22 +733,38 @@
     }
 
     function buildPagesTree() {
-        const { pages, categories, articles } = getAllPages();
-        let html = `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">`;
-        html += `<div style="margin-bottom: 6px;"><label style="display: flex; align-items: center; gap: 6px; text-align: left; justify-content: flex-start;"><input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0;"> ${pages[0].name}</label></div>`;
-        categories.forEach(cat => {
-            const catArticles = articles.filter(a => a.category === cat.id);
-            html += `<div style="margin-top: 10px;">`;
-            html += `<div style="margin-bottom: 4px;"><label style="display: flex; align-items: center; gap: 6px; text-align: left; justify-content: flex-start;"><input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0;"> <strong>${cat.name}</strong></label></div>`;
-            html += `<div class="subitems" style="margin-left: 24px;">`;
-            catArticles.forEach(art => {
-                html += `<div style="margin-bottom: 2px;"><label style="display: flex; align-items: center; gap: 6px; text-align: left; justify-content: flex-start;"><input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0;"> ${art.name}</label></div>`;
-            });
-            html += `</div></div>`;
+    const { pages, categories, articles } = getAllPages();
+    let html = `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">`;
+    // Выбрать все
+    html += `<div style="margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #ccc; display: flex; align-items: center;">
+        <span style="font-weight: bold;">Выбрать все</span>
+        <input type="checkbox" id="selectAllCheckbox" style="margin-left: auto; margin-right: 0;">
+    </div>`;
+    // Главная
+    html += `<div style="margin-bottom: 6px; display: flex; align-items: center;">
+        <span>${pages[0].name}</span>
+        <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin-left: auto; margin-right: 0;">
+    </div>`;
+    // Категории
+    categories.forEach(cat => {
+        const catArticles = articles.filter(a => a.category === cat.id);
+        html += `<div style="margin-top: 10px;">`;
+        html += `<div style="margin-bottom: 4px; display: flex; align-items: center;">
+            <span><strong>${cat.name}</strong></span>
+            <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin-left: auto; margin-right: 0;">
+        </div>`;
+        html += `<div class="subitems" style="margin-left: 24px;">`;
+        catArticles.forEach(art => {
+            html += `<div style="margin-bottom: 2px; display: flex; align-items: center;">
+                <span>${art.name}</span>
+                <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin-left: auto; margin-right: 0;">
+            </div>`;
         });
-        html += '</div>';
-        return html;
-    }
+        html += `</div></div>`;
+    });
+    html += '</div>';
+    return html;
+}
 
     async function loadSelectedPages() {
         const selectedHashesSet = new Set();
@@ -846,7 +862,6 @@
         return result;
     }
 
-    // Промпт для анализа одной страницы
     const singlePagePrompt = `Ты – эксперт по UX/UI и веб-аналитике. Проанализируй поведенческие метрики и HTML-код страницы. Дай конкретные, понятные рекомендации по улучшению пользовательского опыта. Рекомендации должны быть понятны не-разработчику.
 
 ЗАПРЕЩЕНО использовать технические термины: названия тегов, классы, id, "элемент A". Описывай элементы визуально.
@@ -868,7 +883,6 @@
 - Затем: [средний]
 - В последнюю очередь: [низкий]`;
 
-    // Промпт для группировки ответов по страницам
     const groupingPrompt = `Ты – эксперт по UX/UI. Перед тобой набор рекомендаций, полученных для разных страниц одного сайта. Твоя задача: объединить похожие проблемы и рекомендации, убрать дублирование, сгруппировать по смыслу. Сохрани важные детали (цифры из метрик, расположение). Итоговый ответ должен быть структурирован так:
 
 ## Проблемы (общие для нескольких страниц / специфичные)
@@ -903,6 +917,12 @@
                 catCb.checked = allChecked;
             }
         });
+        const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+        if (selectAllCheckbox) {
+            const allCheckboxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+            selectAllCheckbox.checked = allChecked;
+        }
         if (Object.keys(pagesDom).length > 0) {
             const loadedCount = Object.keys(pagesDom).length;
             const infoSpan = document.getElementById('loadedPagesInfo');
@@ -981,6 +1001,9 @@
                 </div>
                 <div id="exportStatus" class="success"></div>
                 <div id="exportError" class="error"></div>
+                <div id="progressContainer" style="display: none; margin-top: 10px; width: 100%; background-color: #f0f0f0; border-radius: 5px;">
+                    <div id="progressBar" style="width: 0%; height: 20px; background-color: #0a9396; border-radius: 5px; text-align: center; color: white; line-height: 20px;">0%</div>
+                </div>
                 <div id="llmResponse" style="margin-top: 20px; padding: 10px; background: white; border: 1px solid #ccc; border-radius: 5px; display: none;">
                     <h3>Ответ от LLM</h3>
                     <div id="llmResponseText" class="llm-response-text" style="color: black; background: white; padding: 10px; border-radius: 5px; white-space: pre-wrap; font-family: inherit; max-height: 400px; overflow: auto;"></div>
@@ -992,12 +1015,34 @@
             </div>
         `;
 
+        const style = document.createElement('style');
+        style.textContent = `
+            .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
+                margin-top: 0.5em;
+                margin-bottom: 0.25em;
+                color: #005f73;
+            }
+            .llm-response-text p {
+                margin: 0.5em 0;
+            }
+            .llm-response-text ul, .llm-response-text ol {
+                margin-top: 0.25em;
+                margin-bottom: 0.5em;
+                padding-left: 1.5em;
+            }
+            .llm-response-text li {
+                margin-bottom: 0.25em;
+            }
+        `;
+        document.head.appendChild(style);
+
         function initCheckboxes() {
             document.querySelectorAll('.category-checkbox').forEach(catCb => {
                 catCb.addEventListener('change', () => {
                     const categoryId = catCb.dataset.category;
                     const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
                     articleBoxes.forEach(art => art.checked = catCb.checked);
+                    updateSelectAllCheckbox();
                 });
             });
             document.querySelectorAll('.article-checkbox').forEach(artCb => {
@@ -1007,8 +1052,27 @@
                     if (!catCb) return;
                     const articlesInCat = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
                     catCb.checked = Array.from(articlesInCat).every(cb => cb.checked);
+                    updateSelectAllCheckbox();
                 });
             });
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', (e) => {
+                    const isChecked = e.target.checked;
+                    document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox').forEach(cb => {
+                        cb.checked = isChecked;
+                    });
+                });
+            }
+        }
+
+        function updateSelectAllCheckbox() {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            if (selectAllCheckbox) {
+                const allCheckboxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+                const allChecked = Array.from(allCheckboxes).every(cb => cb.checked);
+                selectAllCheckbox.checked = allChecked;
+            }
         }
 
         const limitInput = document.getElementById('limitInput');
@@ -1020,11 +1084,13 @@
         const errorDiv = document.getElementById('exportError');
         const llmResponseDiv = document.getElementById('llmResponse');
         const llmResponseText = document.getElementById('llmResponseText');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
         const downloadQueryBtn = document.getElementById('downloadQueryBtn');
         const downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
 
-        let lastQueryContent = '';      // последний запрос (группировки)
-        let lastAnswerContent = '';     // финальный сгруппированный ответ
+        let lastQueryContent = '';
+        let lastAnswerContent = '';
 
         async function exportMetricsOnly() {
             errorDiv.innerText = '';
@@ -1099,7 +1165,59 @@
             }
         }
 
-        // Основная функция: последовательные запросы + группировка
+        // Функции расчёта контрастности
+        function getLuminance(rgb) {
+            let [r, g, b] = [rgb.r, rgb.g, rgb.b].map(v => {
+                v /= 255;
+                return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        }
+
+        function getContrastRatio(color1, color2) {
+            const l1 = getLuminance(color1);
+            const l2 = getLuminance(color2);
+            const lighter = Math.max(l1, l2);
+            const darker = Math.min(l1, l2);
+            return (lighter + 0.05) / (darker + 0.05);
+        }
+
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : null;
+        }
+
+        function analyzeContrast() {
+            const contrastIssues = [];
+            for (const [hash, html] of Object.entries(pagesDom)) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const textElements = doc.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span, a, li, strong, em, label, button');
+                textElements.forEach(el => {
+                    const style = window.getComputedStyle(el);
+                    const textColor = style.color;
+                    const bgColor = style.backgroundColor;
+                    if (textColor && bgColor) {
+                        const rgbText = textColor.match(/\d+/g).map(Number);
+                        const rgbBg = bgColor.match(/\d+/g).map(Number);
+                        if (rgbText.length === 3 && rgbBg.length === 3) {
+                            const textRgb = { r: rgbText[0], g: rgbText[1], b: rgbText[2] };
+                            const bgRgb = { r: rgbBg[0], g: rgbBg[1], b: rgbBg[2] };
+                            const contrast = getContrastRatio(textRgb, bgRgb);
+                            if (contrast < 4.5) {
+                                contrastIssues.push({ page: hash, element: el.tagName, contrast, textColor, bgColor });
+                            }
+                        }
+                    }
+                });
+            }
+            return contrastIssues;
+        }
+
         async function sendToLLM() {
             errorDiv.innerText = '';
             const limitRaw = limitInput.value.trim();
@@ -1140,6 +1258,21 @@
             const apiKey = '3da0eb58533548bfa6bac2e7cf64a245.W3IRCOfn0GkUPnX7IrKTcR_d';
             const modelName = 'devstral-2:123b-cloud';
 
+            const totalSteps = pageEntries.length + 2; // +2 для группировки и контрастности
+            let currentStep = 0;
+            progressContainer.style.display = 'block';
+            progressBar.style.width = '0%';
+            progressBar.innerText = '0%';
+
+            function updateProgress() {
+                currentStep++;
+                const percent = Math.min(100, Math.round((currentStep / totalSteps) * 100));
+                progressBar.style.width = `${percent}%`;
+                progressBar.innerText = `${percent}%`;
+            }
+
+            const startTime = performance.now();
+
             for (let i = 0; i < pageEntries.length; i++) {
                 const [hash, pageHtml] = pageEntries[i];
                 let pageName = hash;
@@ -1165,6 +1298,7 @@
                 } catch (err) {
                     individualAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${pageName} ---\n${err.message}`);
                 }
+                updateProgress();
             }
 
             statusDiv.innerText = 'Группировка ответов...';
@@ -1180,6 +1314,29 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 lastAnswerContent = data.response || JSON.stringify(data);
+                updateProgress();
+
+                // Анализ контрастности
+                const contrastIssues = analyzeContrast();
+                if (contrastIssues.length > 0) {
+                    lastAnswerContent += `\n\n## Анализ контрастности (автоматический)\n`;
+                    const contrastIssuesByPage = {};
+                    contrastIssues.forEach(issue => {
+                        const pageName = issue.page;
+                        if (!contrastIssuesByPage[pageName]) contrastIssuesByPage[pageName] = [];
+                        contrastIssuesByPage[pageName].push(issue);
+                    });
+                    for (const [pageName, issues] of Object.entries(contrastIssuesByPage)) {
+                        lastAnswerContent += `\n### Страница: ${pageName}\n`;
+                        issues.forEach(issue => {
+                            lastAnswerContent += `- Элемент **${issue.element}**: коэффициент контрастности ${issue.contrast.toFixed(2)} (должен быть ≥ 4.5). Цвет текста: ${issue.textColor}, фон: ${issue.bgColor}\n`;
+                        });
+                    }
+                } else {
+                    lastAnswerContent += `\n\n## Анализ контрастности (автоматический)\nВсе текстовые элементы имеют достаточную контрастность (коэффициент ≥ 4.5).`;
+                }
+                updateProgress();
+
                 let formattedHtml = lastAnswerContent;
                 if (typeof marked !== 'undefined') {
                     formattedHtml = marked.parse(lastAnswerContent);
@@ -1188,10 +1345,17 @@
                 }
                 llmResponseText.innerHTML = formattedHtml;
                 llmResponseDiv.style.display = 'block';
-                statusDiv.innerText = 'Готово! Результат сгруппирован и отображён ниже.';
+
+                const endTime = performance.now();
+                const elapsedTime = ((endTime - startTime) / 1000).toFixed(2);
+                statusDiv.innerText = `Готово! Результат сгруппирован и отображён ниже. Время выполнения: ${elapsedTime} секунд.`;
             } catch (err) {
                 errorDiv.innerText = 'Ошибка при группировке: ' + err.message;
                 statusDiv.innerText = '';
+            } finally {
+                progressContainer.style.display = 'none';
+                progressBar.style.width = '0%';
+                progressBar.innerText = '0%';
             }
         }
 
