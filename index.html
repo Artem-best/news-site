@@ -655,7 +655,7 @@
     </script>
 
     <!-- ========== АДМИН-ПАНЕЛЬ (ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕНИЯМИ) ========== -->
-   <!-- START_ADMIN -->
+  <!-- START_ADMIN -->
 <script>
 (function() {
     let adminActive = false;
@@ -809,7 +809,7 @@
                     let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
                     if (catCb) name = catCb.parentElement.innerText.trim();
                 }
-                return `<a href="${h}" style="color: #005f73; text-decoration: none; cursor: pointer;">${name}</a>`;
+                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
             }).join(', ');
             document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
         } else {
@@ -837,10 +837,11 @@
         return result;
     }
 
-    const singlePrompt = `Ты – эксперт по UX/UI. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
-    const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
+    // Промпты — убраны рекомендации для мобильных устройств, акцент на десктоп
+    const singlePrompt = `Ты – эксперт по UX/UI для десктопных веб-сайтов. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Не давай рекомендации для мобильных устройств, только для экранов компьютеров. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
+    const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
-    // Функции для анализа контрастности
+    // Функции для анализа контрастности (возвращает только проблемы, без сообщения об отсутствии)
     function getLuminance(rgb) {
         let [r,g,b] = [rgb.r, rgb.g, rgb.b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
         return 0.2126*r + 0.7152*g + 0.0722*b;
@@ -925,7 +926,7 @@
                     let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
                     if (catCb) name = catCb.parentElement.innerText.trim();
                 }
-                return `<a href="${h}" style="color: #005f73; text-decoration: none; cursor: pointer;">${name}</a>`;
+                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
             }).join(', ');
             const currentPageInfo = document.getElementById('currentPageInfo');
             const loadedPagesInfo = document.getElementById('loadedPagesInfo');
@@ -941,7 +942,7 @@
 
     function showAdminLogin() {
         if(!originalContent) originalContent = document.getElementById('content').innerHTML;
-        document.getElementById('content').innerHTML = `<div class="admin-container"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
+        document.getElementById('content').innerHTML = `<div class="admin-container" style="max-width: 90%;"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
         document.getElementById('password').type='password';
         document.getElementById('loginBtn').onclick = () => {
             if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') showAdminPanel();
@@ -961,13 +962,13 @@
 
         const pagesTreeHtml = buildPagesTree();
         document.getElementById('content').innerHTML = `
-            <div class="admin-container">
+            <div class="admin-container" style="max-width: 90%; width: 90%; margin: 20px auto;">
                 <h2>Панель экспорта метрик</h2>
                 <label style="color: black;">Ограничение записей (только целое положительное число):</label>
                 <input type="text" id="limitInput" placeholder="например, 100" />
                 <div style="margin-top:15px;">${pagesTreeHtml}</div>
                 <div style="margin-top:10px;"><button id="loadPagesBtn">Загрузить выбранные страницы</button> <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span></div>
-                <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: #005f73;">Анализируемые страницы: не выбраны</div>
+                <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: black;">Анализируемые страницы: не выбраны</div>
                 <div style="margin-top:20px;">
                     <button id="exportMetricsBtn">Получить метрики</button>
                     <button id="exportFullBtn">Получить полный файл для анализа</button>
@@ -1119,7 +1120,7 @@
             }
             statusDiv.innerText='Группировка ответов...';
             let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
-            lastQuery=groupQuery;
+            lastQuery = `---ЗАПРОС К LLM (ПЕРВОНАЧАЛЬНЫЙ АНАЛИЗ КАЖДОЙ СТРАНИЦЫ И ГРУППИРОВКА)---\n${groupQuery}`; // сохраняем полный запрос, который использовался для группировки (он включает метрики и страницы)
             try{
                 let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
                 if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1136,9 +1137,10 @@
                     lastAnswer+=`\n### Страница: ${page}\n`;
                     issues.forEach(iss=>lastAnswer+=`- Элемент **${iss.element}**: ${iss.reason}. Цвет текста: ${iss.color}, фон: ${iss.bg}\n`);
                 }
-            } else lastAnswer+='\n\n## Анализ контрастности\nВсе текстовые элементы имеют достаточную контрастность (≥4.5) и нет проблемных цветовых сочетаний.';
+            }
+            // Если проблем с контрастностью нет – ничего не добавляем
             updateProgress(totalSteps);
-            // Рендерим Markdown
+            // Рендерим Markdown (синхронно)
             if (typeof marked !== 'undefined') {
                 try {
                     lastAnswerHtml = marked.parse(lastAnswer);
@@ -1155,7 +1157,14 @@
             progressContainer.style.display='none';
         };
 
-        downloadQueryBtn.onclick = () => { if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'})); a.download='llm_query.txt'; a.click(); URL.revokeObjectURL(a.href); };
+        downloadQueryBtn.onclick = () => {
+            if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; }
+            let a=document.createElement('a');
+            a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'}));
+            a.download='llm_query.txt';
+            a.click();
+            URL.revokeObjectURL(a.href);
+        };
         downloadAnswerBtn.onclick = () => {
             if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; }
             const format = downloadFormatSelect.value;
@@ -1163,12 +1172,18 @@
                 let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href);
             } else if(format === 'pdf'){
                 if(typeof html2pdf === 'undefined'){ errorDiv.innerText='Библиотека PDF не загружена.'; return; }
-                // Создаём временный элемент для рендеринга PDF из уже отформатированного HTML
+                // Для PDF используем отрендеренный HTML, добавляем стили для печати
                 const tempDiv = document.createElement('div');
                 tempDiv.style.padding = '20px';
                 tempDiv.style.fontFamily = 'Arial, sans-serif';
+                tempDiv.style.maxWidth = '100%';
+                tempDiv.style.wordWrap = 'break-word';
                 tempDiv.innerHTML = lastAnswerHtml;
-                const opt = { margin: 1, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+                // Дополнительные стили для печати, чтобы избежать пустого пространства и обрезки
+                const stylePrint = document.createElement('style');
+                stylePrint.textContent = 'body { margin: 0; padding: 0; } .page-break { page-break-before: always; }';
+                tempDiv.appendChild(stylePrint);
+                const opt = { margin: 0.5, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, letterRendering: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
                 html2pdf().set(opt).from(tempDiv).save();
             }
         };
