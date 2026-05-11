@@ -729,283 +729,293 @@
 
     <!-- ========== АДМИН-ПАНЕЛЬ (не изменена) ========== -->
     <!-- START_ADMIN -->
-    <script>
-    (function() {
-        let adminActive = false;
-        let originalContent = null;
-        let pagesDom = {};
-        let selectedPagesHashes = new Set();
-        let originalAddMethod = null; // для переопределения Firestore
+<script>
+(function() {
+    let adminActive = false;
+    let originalContent = null;
+    let pagesDom = {};
+    let selectedPagesHashes = new Set();
+    let originalAddMethod = null;
 
-        // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
-        function loadScripts() {
-            if (typeof marked === 'undefined') {
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
-                script.async = false;
-                document.head.appendChild(script);
+    // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+    function loadScripts() {
+        if (typeof marked === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            script.async = false;
+            document.head.appendChild(script);
+        }
+    }
+    loadScripts();
+
+    // --- Улучшенные функции для контрастности ---
+    function getLuminance(r, g, b) {
+        const rsrgb = r / 255;
+        const gsrgb = g / 255;
+        const bsrgb = b / 255;
+        const rsrgbLin = rsrgb <= 0.03928 ? rsrgb / 12.92 : Math.pow((rsrgb + 0.055) / 1.055, 2.4);
+        const gsrgbLin = gsrgb <= 0.03928 ? gsrgb / 12.92 : Math.pow((gsrgb + 0.055) / 1.055, 2.4);
+        const bsrgbLin = bsrgb <= 0.03928 ? bsrgb / 12.92 : Math.pow((bsrgb + 0.055) / 1.055, 2.4);
+        return 0.2126 * rsrgbLin + 0.7152 * gsrgbLin + 0.0722 * bsrgbLin;
+    }
+
+    function getContrastRatio(color1, color2) {
+        const lum1 = getLuminance(color1.r, color1.g, color1.b);
+        const lum2 = getLuminance(color2.r, color2.g, color2.b);
+        const lighter = Math.max(lum1, lum2);
+        const darker = Math.min(lum1, lum2);
+        return (lighter + 0.05) / (darker + 0.05);
+    }
+
+    function parseColorToRGB(colorStr) {
+        if (colorStr === 'transparent' || colorStr === 'rgba(0, 0, 0, 0)') return null;
+        const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (match) {
+            return { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) };
+        }
+        return null;
+    }
+
+    function getBackgroundColor(element) {
+        let bg = window.getComputedStyle(element).backgroundColor;
+        if (bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') {
+            if (element.parentElement) {
+                return getBackgroundColor(element.parentElement);
+            } else {
+                return 'rgb(255, 255, 255)';
             }
         }
-        loadScripts();
+        return bg;
+    }
 
-        // --- Улучшенные функции для контрастности ---
-        function getLuminance(r, g, b) {
-            const rsrgb = r / 255;
-            const gsrgb = g / 255;
-            const bsrgb = b / 255;
-            const rsrgbLin = rsrgb <= 0.03928 ? rsrgb / 12.92 : Math.pow((rsrgb + 0.055) / 1.055, 2.4);
-            const gsrgbLin = gsrgb <= 0.03928 ? gsrgb / 12.92 : Math.pow((gsrgb + 0.055) / 1.055, 2.4);
-            const bsrgbLin = bsrgb <= 0.03928 ? bsrgb / 12.92 : Math.pow((bsrgb + 0.055) / 1.055, 2.4);
-            return 0.2126 * rsrgbLin + 0.7152 * gsrgbLin + 0.0722 * bsrgbLin;
-        }
-
-        function getContrastRatio(color1, color2) {
-            const lum1 = getLuminance(color1.r, color1.g, color1.b);
-            const lum2 = getLuminance(color2.r, color2.g, color2.b);
-            const lighter = Math.max(lum1, lum2);
-            const darker = Math.min(lum1, lum2);
-            return (lighter + 0.05) / (darker + 0.05);
-        }
-
-        function parseColorToRGB(colorStr) {
-            if (colorStr === 'transparent' || colorStr === 'rgba(0, 0, 0, 0)') return null;
-            const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-            if (match) {
-                return { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) };
-            }
-            return null;
-        }
-
-        function getBackgroundColor(element) {
-            let bg = window.getComputedStyle(element).backgroundColor;
-            if (bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') {
-                if (element.parentElement) {
-                    return getBackgroundColor(element.parentElement);
-                } else {
-                    return 'rgb(255, 255, 255)';
+    function getContrastIssues() {
+        const issues = [];
+        const selectors = ['h1', 'h2', 'h3', 'p', 'a', '.news-item', '.category-badge', 'header h1', 'nav a', 'footer p', '.meta', '.article-content p'];
+        const elements = document.querySelectorAll(selectors.join(','));
+        for (let el of elements) {
+            const rect = el.getBoundingClientRect();
+            if (rect.width === 0 && rect.height === 0) continue;
+            const style = window.getComputedStyle(el);
+            if (style.display === 'none' || style.visibility === 'hidden') continue;
+            const colorStr = style.color;
+            const bgStr = getBackgroundColor(el);
+            const colorRGB = parseColorToRGB(colorStr);
+            const bgRGB = parseColorToRGB(bgStr);
+            if (!colorRGB || !bgRGB) continue;
+            const contrast = getContrastRatio(colorRGB, bgRGB);
+            const fontSize = parseFloat(style.fontSize);
+            const fontWeight = style.fontWeight;
+            let isLarge = false;
+            if (fontSize >= 18) isLarge = true;
+            else if (fontSize >= 14 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) isLarge = true;
+            const required = isLarge ? 3.0 : 4.5;
+            if (contrast < required) {
+                const textPreview = el.innerText.trim().slice(0, 60);
+                if (textPreview.length > 0) {
+                    issues.push({
+                        element: el.tagName + (el.id ? '#'+el.id : '') + (el.className ? '.'+el.className : ''),
+                        text: textPreview,
+                        contrast: contrast.toFixed(2),
+                        required: required.toFixed(1),
+                        color: colorStr,
+                        backgroundColor: bgStr
+                    });
                 }
             }
-            return bg;
         }
-
-        function getContrastIssues() {
-            const issues = [];
-            const selectors = ['h1', 'h2', 'h3', 'p', 'a', '.news-item', '.category-badge', 'header h1', 'nav a', 'footer p', '.meta', '.article-content p'];
-            const elements = document.querySelectorAll(selectors.join(','));
-            for (let el of elements) {
-                const rect = el.getBoundingClientRect();
-                if (rect.width === 0 && rect.height === 0) continue;
-                const style = window.getComputedStyle(el);
-                if (style.display === 'none' || style.visibility === 'hidden') continue;
-                const colorStr = style.color;
-                const bgStr = getBackgroundColor(el);
-                const colorRGB = parseColorToRGB(colorStr);
-                const bgRGB = parseColorToRGB(bgStr);
-                if (!colorRGB || !bgRGB) continue;
-                const contrast = getContrastRatio(colorRGB, bgRGB);
-                const fontSize = parseFloat(style.fontSize);
-                const fontWeight = style.fontWeight;
-                let isLarge = false;
-                if (fontSize >= 18) isLarge = true;
-                else if (fontSize >= 14 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) isLarge = true;
-                const required = isLarge ? 3.0 : 4.5;
-                if (contrast < required) {
-                    const textPreview = el.innerText.trim().slice(0, 60);
-                    if (textPreview.length > 0) {
-                        issues.push({
-                            element: el.tagName + (el.id ? '#'+el.id : '') + (el.className ? '.'+el.className : ''),
-                            text: textPreview,
-                            contrast: contrast.toFixed(2),
-                            required: required.toFixed(1),
-                            color: colorStr,
-                            backgroundColor: bgStr
-                        });
-                    }
-                }
+        const unique = [];
+        const keys = new Set();
+        for (let issue of issues) {
+            const key = `${issue.color}|${issue.backgroundColor}|${issue.text}`;
+            if (!keys.has(key)) {
+                keys.add(key);
+                unique.push(issue);
             }
-            const unique = [];
-            const keys = new Set();
-            for (let issue of issues) {
-                const key = `${issue.color}|${issue.backgroundColor}|${issue.text}`;
-                if (!keys.has(key)) {
-                    keys.add(key);
-                    unique.push(issue);
-                }
-            }
-            return unique.slice(0, 30);
         }
+        return unique.slice(0, 30);
+    }
 
-        // Захват DOM с удалением стилей админ-панели
-        function capturePureStructureWithContrast() {
-            const cloneDoc = document.cloneNode(true);
-            const scripts = cloneDoc.querySelectorAll('script');
-            scripts.forEach(s => s.remove());
-            const adminDivs = cloneDoc.querySelectorAll('.admin-container');
-            adminDivs.forEach(el => el.remove());
-            const styles = cloneDoc.querySelectorAll('style');
-            styles.forEach(style => {
-                if (style.textContent.includes('.llm-response-text')) {
-                    style.remove();
-                }
+    // Захват DOM с удалением стилей админ-панели
+    function capturePureStructureWithContrast() {
+        const cloneDoc = document.cloneNode(true);
+        const scripts = cloneDoc.querySelectorAll('script');
+        scripts.forEach(s => s.remove());
+        const adminDivs = cloneDoc.querySelectorAll('.admin-container');
+        adminDivs.forEach(el => el.remove());
+        const styles = cloneDoc.querySelectorAll('style');
+        styles.forEach(style => {
+            if (style.textContent.includes('.llm-response-text')) {
+                style.remove();
+            }
+        });
+        let html = cloneDoc.documentElement.outerHTML;
+        html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
+        html = html.replace(/ on\w+="[^"]*"/gi, '').replace(/ on\w+='[^']*'/gi, '');
+        return '<!DOCTYPE html>\n' + html;
+    }
+
+    async function captureDomByHash(hash) {
+        const originalHash = window.location.hash;
+        if (window.db && window.db.collection) {
+            originalAddMethod = window.db.collection().add;
+            window.db.collection = () => ({
+                add: async () => {}
             });
-            let html = cloneDoc.documentElement.outerHTML;
-            html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
-            html = html.replace(/ on\w+="[^"]*"/gi, '').replace(/ on\w+='[^']*'/gi, '');
-            return '<!DOCTYPE html>\n' + html;
         }
-
-        async function captureDomByHash(hash) {
-            const originalHash = window.location.hash;
-            // Полное отключение метрик: переопределяем add на время захвата
-            if (window.db && window.db.collection) {
-                originalAddMethod = window.db.collection().add;
-                window.db.collection = () => ({
-                    add: async () => {}
-                });
-            }
-            window.METRIKA_DISABLED = true;
-            window.location.hash = hash;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const contrastIssues = getContrastIssues();
-            const domHtml = capturePureStructureWithContrast();
-            window.location.hash = originalHash;
-            await new Promise(resolve => setTimeout(resolve, 100));
-            window.METRIKA_DISABLED = false;
-            if (originalAddMethod && window.db) {
-                window.db.collection = () => ({ add: originalAddMethod });
-                originalAddMethod = null;
-            }
-            return { html: domHtml, contrastIssues };
+        window.METRIKA_DISABLED = true;
+        window.location.hash = hash;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const contrastIssues = getContrastIssues();
+        const domHtml = capturePureStructureWithContrast();
+        window.location.hash = originalHash;
+        await new Promise(resolve => setTimeout(resolve, 100));
+        window.METRIKA_DISABLED = false;
+        if (originalAddMethod && window.db) {
+            window.db.collection = () => ({ add: originalAddMethod });
+            originalAddMethod = null;
         }
+        return { html: domHtml, contrastIssues };
+    }
 
-        function getAllPages() {
-            const pages = [{ name: 'Главная', hash: '#/', type: 'main' }];
-            const categories = [
-                { name: 'Политика', hash: '#/category/politics', id: 'politics' },
-                { name: 'Спорт', hash: '#/category/sport', id: 'sport' },
-                { name: 'Технологии', hash: '#/category/tech', id: 'tech' },
-                { name: 'Наука', hash: '#/category/science', id: 'science' },
-                { name: 'Культура', hash: '#/category/culture', id: 'culture' }
-            ];
-            const articles = [
-                { name: 'Цифровой рубль', hash: '#/article/politics1', category: 'politics' },
-                { name: 'Налоговый кодекс', hash: '#/article/politics2', category: 'politics' },
-                { name: 'Футбол (Россия-Иран)', hash: '#/article/sport1', category: 'sport' },
-                { name: 'Хоккей (Кубок Первого канала)', hash: '#/article/sport2', category: 'sport' },
-                { name: 'YandexGPT 3', hash: '#/article/tech1', category: 'tech' },
-                { name: 'Квантовый процессор', hash: '#/article/tech2', category: 'tech' },
-                { name: 'Экзопланета', hash: '#/article/science1', category: 'science' },
-                { name: 'ДНК бизона', hash: '#/article/science2', category: 'science' },
-                { name: 'Выставка Репина', hash: '#/article/culture1', category: 'culture' },
-                { name: 'Балет Щелкунчик', hash: '#/article/culture2', category: 'culture' }
-            ];
-            return { pages, categories, articles };
-        }
+    function getAllPages() {
+        const pages = [{ name: 'Главная', hash: '#/', type: 'main' }];
+        const categories = [
+            { name: 'Политика', hash: '#/category/politics', id: 'politics' },
+            { name: 'Спорт', hash: '#/category/sport', id: 'sport' },
+            { name: 'Технологии', hash: '#/category/tech', id: 'tech' },
+            { name: 'Наука', hash: '#/category/science', id: 'science' },
+            { name: 'Культура', hash: '#/category/culture', id: 'culture' }
+        ];
+        const articles = [
+            { name: 'Цифровой рубль', hash: '#/article/politics1', category: 'politics' },
+            { name: 'Налоговый кодекс', hash: '#/article/politics2', category: 'politics' },
+            { name: 'Футбол (Россия-Иран)', hash: '#/article/sport1', category: 'sport' },
+            { name: 'Хоккей (Кубок Первого канала)', hash: '#/article/sport2', category: 'sport' },
+            { name: 'YandexGPT 3', hash: '#/article/tech1', category: 'tech' },
+            { name: 'Квантовый процессор', hash: '#/article/tech2', category: 'tech' },
+            { name: 'Экзопланета', hash: '#/article/science1', category: 'science' },
+            { name: 'ДНК бизона', hash: '#/article/science2', category: 'science' },
+            { name: 'Выставка Репина', hash: '#/article/culture1', category: 'culture' },
+            { name: 'Балет Щелкунчик', hash: '#/article/culture2', category: 'culture' }
+        ];
+        return { pages, categories, articles };
+    }
 
-        function buildPagesTree() {
-            const { pages, categories, articles } = getAllPages();
-            let html = `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px; font-weight: bold; color: black;">
-                <span>Страница</span><span>Выбрать</span>
+    function buildPagesTree() {
+        const { pages, categories, articles } = getAllPages();
+        let html = `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px; font-weight: bold; color: black;">
+            <span>Страница</span><span>Выбрать</span>
+        </div>`;
+        html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
+            <span style="font-weight: bold; color: black;">Выбрать все</span>
+            <input type="checkbox" id="selectAllCheckbox" style="margin: 0; justify-self: end;">
+        </div>`;
+        html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #fff; padding: 4px 8px; border-radius: 4px;">
+            <a href="#/" style="color: black; text-decoration: none; cursor: pointer;">${pages[0].name}</a>
+            <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0; justify-self: end;">
+        </div>`;
+        let rowColor = '#f9f9f9';
+        categories.forEach(cat => {
+            const catArticles = articles.filter(a => a.category === cat.id);
+            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
+                <strong><a href="${cat.hash}" style="color: black; text-decoration: none; cursor: pointer;">${cat.name}</a></strong>
+                <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0; justify-self: end;">
             </div>`;
-            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
-                <span style="font-weight: bold; color: black;">Выбрать все</span>
-                <input type="checkbox" id="selectAllCheckbox" style="margin: 0; justify-self: end;">
-            </div>`;
-            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #fff; padding: 4px 8px; border-radius: 4px;">
-                <a href="#/" style="color: black; text-decoration: none; cursor: pointer;">${pages[0].name}</a>
-                <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0; justify-self: end;">
-            </div>`;
-            let rowColor = '#f9f9f9';
-            categories.forEach(cat => {
-                const catArticles = articles.filter(a => a.category === cat.id);
-                html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
-                    <strong><a href="${cat.hash}" style="color: black; text-decoration: none; cursor: pointer;">${cat.name}</a></strong>
-                    <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0; justify-self: end;">
+            rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
+            catArticles.forEach(art => {
+                html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-left: 16px;">
+                    <a href="${art.hash}" style="color: black; text-decoration: none; cursor: pointer;">${art.name}</a>
+                    <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0; justify-self: end;">
                 </div>`;
                 rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
-                catArticles.forEach(art => {
-                    html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-left: 16px;">
-                        <a href="${art.hash}" style="color: black; text-decoration: none; cursor: pointer;">${art.name}</a>
-                        <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0; justify-self: end;">
-                    </div>`;
-                    rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
+            });
+        });
+        return `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">${html}</div>`;
+    }
+
+    async function loadSelectedPages() {
+        const selectedHashes = new Set();
+        document.querySelectorAll('.page-checkbox:checked, .article-checkbox:checked').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash) selectedHashes.add(hash);
+        });
+        document.querySelectorAll('.category-checkbox:checked').forEach(cb => {
+            const catHash = cb.dataset.categoryHash;
+            if (catHash) selectedHashes.add(catHash);
+        });
+        const hashes = Array.from(selectedHashes);
+        if (hashes.length === 0) {
+            document.getElementById('exportError').innerText = 'Выберите хотя бы одну страницу.';
+            return;
+        }
+        selectedPagesHashes.clear();
+        hashes.forEach(h => selectedPagesHashes.add(h));
+        let loaded = 0;
+        const newPagesDom = {};
+        for (const hash of hashes) {
+            const statusDiv = document.getElementById('exportStatus');
+            if (statusDiv) statusDiv.innerText = `Загрузка страниц: ${loaded+1}/${hashes.length}...`;
+            try {
+                newPagesDom[hash] = await captureDomByHash(hash);
+                loaded++;
+            } catch(e) { console.error(e); }
+        }
+        pagesDom = newPagesDom;
+        sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
+        sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
+        const limitInput = document.getElementById('limitInput');
+        if (limitInput) sessionStorage.setItem('limitValue', limitInput.value);
+        document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
+        document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
+        if (loaded > 0) {
+            const names = hashes.map(h => {
+                let name = h;
+                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) name = cb.parentElement.innerText.trim();
+                else {
+                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
+                    if (catCb) name = catCb.parentElement.innerText.trim();
+                }
+                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
+            }).join(', ');
+            document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
+        } else {
+            document.getElementById('currentPageInfo').innerHTML = 'Анализируемые страницы: не выбраны';
+        }
+    }
+
+    // Новая функция fetchMetrics с фильтрацией по хешу страницы
+    async function fetchMetrics(limit, pageHash) {
+        const cols = ['page_views','clicks','scroll_depth','page_exits','performance_metrics'];
+        let result = {};
+        for(let col of cols){
+            let snap = await db.collection(col).get();
+            let docs = [];
+            snap.forEach(d => {
+                let data = d.data();
+                if(data.userAgent) delete data.userAgent;
+                if(data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
+                docs.push({id: d.id, ...data});
+            });
+            docs.sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''));
+            // Исключаем записи админ-панели
+            let filtered = docs.filter(r => !(r.pageUrl || r.url || r.fromPage || '').includes('#/admin'));
+            // Фильтруем по хешу страницы, если он указан
+            if (pageHash) {
+                filtered = filtered.filter(r => {
+                    const urlStr = r.pageUrl || r.url || r.fromPage || '';
+                    return urlStr.includes(pageHash);
                 });
-            });
-            return `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">${html}</div>`;
+            }
+            if (limit && limit>0) {
+                filtered = filtered.slice(-limit);
+            }
+            result[col] = filtered;
         }
+        return result;
+    }
 
-        async function loadSelectedPages() {
-            const selectedHashes = new Set();
-            document.querySelectorAll('.page-checkbox:checked, .article-checkbox:checked').forEach(cb => {
-                const hash = cb.dataset.hash;
-                if (hash) selectedHashes.add(hash);
-            });
-            document.querySelectorAll('.category-checkbox:checked').forEach(cb => {
-                const catHash = cb.dataset.categoryHash;
-                if (catHash) selectedHashes.add(catHash);
-            });
-            const hashes = Array.from(selectedHashes);
-            if (hashes.length === 0) {
-                document.getElementById('exportError').innerText = 'Выберите хотя бы одну страницу.';
-                return;
-            }
-            selectedPagesHashes.clear();
-            hashes.forEach(h => selectedPagesHashes.add(h));
-            let loaded = 0;
-            const newPagesDom = {};
-            for (const hash of hashes) {
-                const statusDiv = document.getElementById('exportStatus');
-                if (statusDiv) statusDiv.innerText = `Загрузка страниц: ${loaded+1}/${hashes.length}...`;
-                try {
-                    newPagesDom[hash] = await captureDomByHash(hash);
-                    loaded++;
-                } catch(e) { console.error(e); }
-            }
-            pagesDom = newPagesDom;
-            sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
-            sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
-            const limitInput = document.getElementById('limitInput');
-            if (limitInput) sessionStorage.setItem('limitValue', limitInput.value);
-            document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
-            document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
-            if (loaded > 0) {
-                const names = hashes.map(h => {
-                    let name = h;
-                    let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
-                    if (cb) name = cb.parentElement.innerText.trim();
-                    else {
-                        let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
-                        if (catCb) name = catCb.parentElement.innerText.trim();
-                    }
-                    return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
-                }).join(', ');
-                document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
-            } else {
-                document.getElementById('currentPageInfo').innerHTML = 'Анализируемые страницы: не выбраны';
-            }
-        }
-
-        async function fetchMetrics(limit) {
-            const cols = ['page_views','clicks','scroll_depth','page_exits','performance_metrics'];
-            let result = {};
-            for(let col of cols){
-                let snap = await db.collection(col).get();
-                let docs = [];
-                snap.forEach(d => {
-                    let data = d.data();
-                    if(data.userAgent) delete data.userAgent;
-                    if(data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
-                    docs.push({id: d.id, ...data});
-                });
-                docs.sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''));
-                let filtered = docs.filter(r => !(r.pageUrl || r.url || r.fromPage || '').includes('#/admin'));
-                if(col === 'page_exits') filtered = filtered.filter(r => r.timeSpentMs >= 200);
-                result[col] = (limit && limit>0) ? filtered.slice(-limit) : filtered;
-            }
-            return result;
-        }
-
-        const singlePrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
+    const singlePrompt = `Ты – эксперт по UX/UI и веб-аналитике. Твоя задача – проанализировать поведенческие метрики и HTML-код сайта (полностью отрисованная страница) и дать конкретные, понятные рекомендации по улучшению пользовательского опыта. Твои рекомендации должны быть понятны даже не-разработчику (менеджеру, дизайнеру).
 
 ЗАПРЕЩЕНО использовать технические термины: названия тегов (div, span, a), классы, id, "элемент A". Вместо этого описывай элементы визуально: «блок последних новостей», «строка с названием категории в заголовке статьи», «кнопка возврата на главную», «ссылка на категорию».
 
@@ -1032,437 +1042,467 @@
 
 Ответ дай на русском языке, кратко, без воды.`;
 
-        const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
+    const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
-        function getEnhancedPrompt(avoidCode) {
-            if (!avoidCode) return singlePrompt;
-            return singlePrompt + `\n\nВАЖНО: ЕЩЁ РАЗ – ЗАПРЕЩЕНО использовать любые технические термины: названия CSS-свойств (margin, padding, color и т.д.), hex-коды цветов, названия тегов, классов, id. Даже если они встречаются в метриках или HTML, не цитируйте их. Вместо этого описывайте изменения словами, например: «увеличьте отступ между абзацами», «используйте тёмно-серый цвет текста вместо светло-серого», «сделайте ссылки подчёркнутыми при наведении». Каждая рекомендация должна быть понятна человеку без знания кода.`;
+    function getEnhancedPrompt(avoidCode) {
+        if (!avoidCode) return singlePrompt;
+        return singlePrompt + `\n\nВАЖНО: ЕЩЁ РАЗ – ЗАПРЕЩЕНО использовать любые технические термины: названия CSS-свойств (margin, padding, color и т.д.), hex-коды цветов, названия тегов, классов, id. Даже если они встречаются в метриках или HTML, не цитируйте их. Вместо этого описывайте изменения словами, например: «увеличьте отступ между абзацами», «используйте тёмно-серый цвет текста вместо светло-серого», «сделайте ссылки подчёркнутыми при наведении». Каждая рекомендация должна быть понятна человеку без знания кода.`;
+    }
+
+    function formatContrastIssues(issues) {
+        if (!issues || issues.length === 0) return null;
+        let text = "Обнаружены проблемы с контрастностью текста:\n";
+        for (let issue of issues) {
+            text += `- Элемент: ${issue.element} (текст: "${issue.text}"). Контраст ${issue.contrast}:1 при норме ${issue.required}:1. Цвет текста ${issue.color}, фон ${issue.backgroundColor}.\n`;
         }
+        return text;
+    }
 
-        function formatContrastIssues(issues) {
-            if (!issues || issues.length === 0) return null;
-            let text = "Обнаружены проблемы с контрастностью текста:\n";
-            for (let issue of issues) {
-                text += `- Элемент: ${issue.element} (текст: "${issue.text}"). Контраст ${issue.contrast}:1 при норме ${issue.required}:1. Цвет текста ${issue.color}, фон ${issue.backgroundColor}.\n`;
+    function cleanEmptyLines(str) {
+        if (!str) return str;
+        return str.split('\n').filter(line => line.trim().length > 0).join('\n');
+    }
+
+    function restoreCheckboxesState() {
+        if (selectedPagesHashes.size === 0) return;
+        document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash && selectedPagesHashes.has(hash)) cb.checked = true;
+            else if (cb.classList.contains('article-checkbox') && hash && !selectedPagesHashes.has(hash)) cb.checked = false;
+        });
+        document.querySelectorAll('.category-checkbox').forEach(catCb => {
+            const categoryId = catCb.dataset.category;
+            const catHash = catCb.dataset.categoryHash;
+            if (catHash && selectedPagesHashes.has(catHash)) catCb.checked = true;
+            else {
+                const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
+                const allChecked = Array.from(articleBoxes).every(art => art.checked);
+                catCb.checked = allChecked;
             }
-            return text;
+        });
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) {
+            const allBoxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            const allChecked = Array.from(allBoxes).every(cb => cb.checked);
+            selectAll.checked = allChecked;
         }
-
-        function cleanEmptyLines(str) {
-            if (!str) return str;
-            return str.split('\n').filter(line => line.trim().length > 0).join('\n');
-        }
-
-        function restoreCheckboxesState() {
-            if (selectedPagesHashes.size === 0) return;
-            document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
-                const hash = cb.dataset.hash;
-                if (hash && selectedPagesHashes.has(hash)) cb.checked = true;
-                else if (cb.classList.contains('article-checkbox') && hash && !selectedPagesHashes.has(hash)) cb.checked = false;
-            });
-            document.querySelectorAll('.category-checkbox').forEach(catCb => {
-                const categoryId = catCb.dataset.category;
-                const catHash = catCb.dataset.categoryHash;
-                if (catHash && selectedPagesHashes.has(catHash)) catCb.checked = true;
+        if (Object.keys(pagesDom).length > 0) {
+            const loadedCount = Object.keys(pagesDom).length;
+            const infoSpan = document.getElementById('loadedPagesInfo');
+            if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loadedCount}`;
+            const pageNames = Array.from(selectedPagesHashes).map(h => {
+                let name = h;
+                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) name = cb.parentElement.innerText.trim();
                 else {
-                    const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
-                    const allChecked = Array.from(articleBoxes).every(art => art.checked);
-                    catCb.checked = allChecked;
+                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
+                    if (catCb) name = catCb.parentElement.innerText.trim();
                 }
-            });
-            const selectAll = document.getElementById('selectAllCheckbox');
-            if (selectAll) {
-                const allBoxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
-                const allChecked = Array.from(allBoxes).every(cb => cb.checked);
-                selectAll.checked = allChecked;
-            }
-            if (Object.keys(pagesDom).length > 0) {
-                const loadedCount = Object.keys(pagesDom).length;
-                const infoSpan = document.getElementById('loadedPagesInfo');
-                if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loadedCount}`;
-                const pageNames = Array.from(selectedPagesHashes).map(h => {
-                    let name = h;
-                    let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
-                    if (cb) name = cb.parentElement.innerText.trim();
-                    else {
-                        let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
-                        if (catCb) name = catCb.parentElement.innerText.trim();
-                    }
-                    return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
-                }).join(', ');
-                const currentPageInfo = document.getElementById('currentPageInfo');
-                if (currentPageInfo) currentPageInfo.innerHTML = `Анализируемые страницы: ${pageNames}`;
+                return `<a href="${h}" style="color: black; text-decoration: none; cursor: pointer;">${name}</a>`;
+            }).join(', ');
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = `Анализируемые страницы: ${pageNames}`;
+        } else {
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = 'Анализируемые страницы: не выбраны';
+            const infoSpan = document.getElementById('loadedPagesInfo');
+            if (infoSpan) infoSpan.innerText = '';
+        }
+        const limitInput = document.getElementById('limitInput');
+        if (limitInput && sessionStorage.getItem('limitValue')) {
+            limitInput.value = sessionStorage.getItem('limitValue');
+        }
+        const groupingCheckbox = document.getElementById('groupingCheckbox');
+        if (groupingCheckbox && sessionStorage.getItem('groupingEnabled') !== null) {
+            groupingCheckbox.checked = sessionStorage.getItem('groupingEnabled') === 'true';
+        }
+        const plainCheckbox = document.getElementById('plainLanguageCheckbox');
+        if (plainCheckbox && sessionStorage.getItem('plainEnabled') !== null) {
+            plainCheckbox.checked = sessionStorage.getItem('plainEnabled') === 'true';
+        }
+    }
+
+    function showAdminLogin() {
+        if(!originalContent) originalContent = document.getElementById('content').innerHTML;
+        document.getElementById('content').innerHTML = `<div class="admin-container" style="max-width: 90%;"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
+        document.getElementById('password').type='password';
+        document.getElementById('loginBtn').onclick = () => {
+            if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') {
+                sessionStorage.setItem('adminAuthenticated', 'true');
+                sessionStorage.setItem('adminOriginalContent', originalContent);
+                showAdminPanel();
             } else {
-                const currentPageInfo = document.getElementById('currentPageInfo');
-                if (currentPageInfo) currentPageInfo.innerHTML = 'Анализируемые страницы: не выбраны';
-                const infoSpan = document.getElementById('loadedPagesInfo');
-                if (infoSpan) infoSpan.innerText = '';
+                document.getElementById('loginError').innerText = 'Неверный логин или пароль';
             }
-            const limitInput = document.getElementById('limitInput');
-            if (limitInput && sessionStorage.getItem('limitValue')) {
-                limitInput.value = sessionStorage.getItem('limitValue');
-            }
-            const groupingCheckbox = document.getElementById('groupingCheckbox');
-            if (groupingCheckbox && sessionStorage.getItem('groupingEnabled') !== null) {
-                groupingCheckbox.checked = sessionStorage.getItem('groupingEnabled') === 'true';
-            }
-            const plainCheckbox = document.getElementById('plainLanguageCheckbox');
-            if (plainCheckbox && sessionStorage.getItem('plainEnabled') !== null) {
-                plainCheckbox.checked = sessionStorage.getItem('plainEnabled') === 'true';
-            }
-        }
+        };
+        adminActive = true;
+    }
 
-        function showAdminLogin() {
-            if(!originalContent) originalContent = document.getElementById('content').innerHTML;
-            document.getElementById('content').innerHTML = `<div class="admin-container" style="max-width: 90%;"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
-            document.getElementById('password').type='password';
-            document.getElementById('loginBtn').onclick = () => {
-                if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') {
-                    sessionStorage.setItem('adminAuthenticated', 'true');
-                    sessionStorage.setItem('adminOriginalContent', originalContent);
-                    showAdminPanel();
-                } else {
-                    document.getElementById('loginError').innerText = 'Неверный логин или пароль';
-                }
-            };
-            adminActive = true;
+    function showAdminPanel() {
+        const savedDom = sessionStorage.getItem('pagesDom');
+        const savedHashes = sessionStorage.getItem('selectedPagesHashes');
+        if (savedDom && savedHashes) {
+            pagesDom = JSON.parse(savedDom);
+            selectedPagesHashes = new Set(JSON.parse(savedHashes));
         }
-
-        function showAdminPanel() {
-            const savedDom = sessionStorage.getItem('pagesDom');
-            const savedHashes = sessionStorage.getItem('selectedPagesHashes');
-            if (savedDom && savedHashes) {
-                pagesDom = JSON.parse(savedDom);
-                selectedPagesHashes = new Set(JSON.parse(savedHashes));
-            }
-            const pagesTreeHtml = buildPagesTree();
-            document.getElementById('content').innerHTML = `
-                <div class="admin-container" style="max-width: 90%; width: 90%; margin: 20px auto;">
-                    <h2>Панель экспорта метрик</h2>
-                    <div style="margin-top:15px;">${pagesTreeHtml}</div>
-                    <div style="margin-top:10px;">
-                        <button id="loadPagesBtn">Загрузить выбранные страницы</button>
-                        <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span>
+        const pagesTreeHtml = buildPagesTree();
+        document.getElementById('content').innerHTML = `
+            <div class="admin-container" style="max-width: 90%; width: 90%; margin: 20px auto;">
+                <h2>Панель экспорта метрик</h2>
+                <div style="margin-top:15px;">${pagesTreeHtml}</div>
+                <div style="margin-top:10px;">
+                    <button id="loadPagesBtn">Загрузить выбранные страницы</button>
+                    <span id="loadedPagesInfo" style="margin-left:15px; color: black;"></span>
+                </div>
+                <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: black;">Анализируемые страницы: не выбраны</div>
+                <div style="margin-top: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <label style="color: black; white-space: nowrap;">Лимит записей:</label>
+                        <input type="text" id="limitInput" placeholder="100" style="width: 80px;" />
                     </div>
-                    <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color: black;">Анализируемые страницы: не выбраны</div>
-                    <div style="margin-top: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <label style="color: black; white-space: nowrap;">Лимит записей:</label>
-                            <input type="text" id="limitInput" placeholder="100" style="width: 80px;" />
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <input type="checkbox" id="plainLanguageCheckbox">
-                            <label style="color: black; white-space: nowrap;">Без упоминания кода</label>
-                        </div>
-                    </div>
-                    <div style="margin-top:20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                        <button id="exportMetricsBtn">Получить метрики</button>
-                        <button id="testDownloadBtn" style="background-color:#4CAF50;">Тест: скачать запросы</button>
-                        <button id="sendToLLMBtn" style="background-color:#6c757d;">Получить рекомендации</button>
-                        <div style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
-                            <input type="checkbox" id="groupingCheckbox" checked>
-                            <label style="color: black; white-space: nowrap;">Группировка</label>
-                        </div>
-                    </div>
-                    <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
-                    <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
-                    <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
-                        <h3 style="color: black;">Ответ от LLM</h3>
-                        <div id="llmResponseText" class="llm-response-text" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto; line-height:1.4;"></div>
-                        <div style="margin-top:10px;">
-                            <button id="downloadAnswerBtn">Скачать рекомендации</button>
-                            <select id="downloadFormatSelect" style="margin-left: 10px; padding: 5px;">
-                                <option value="txt">TXT</option>
-                                <option value="md">MD</option>
-                            </select>
-                        </div>
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <input type="checkbox" id="plainLanguageCheckbox">
+                        <label style="color: black; white-space: nowrap;">Без упоминания кода</label>
                     </div>
                 </div>
-            `;
+                <div style="margin-top:20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <button id="exportMetricsBtn">Получить метрики</button>
+                    <button id="testDownloadBtn" style="background-color:#4CAF50;">Тест: скачать запросы</button>
+                    <button id="sendToLLMBtn" style="background-color:#6c757d;">Получить рекомендации</button>
+                    <div style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
+                        <input type="checkbox" id="groupingCheckbox" checked>
+                        <label style="color: black; white-space: nowrap;">Группировка</label>
+                    </div>
+                </div>
+                <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
+                <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
+                <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
+                    <h3 style="color: black;">Ответ от LLM</h3>
+                    <div id="llmResponseText" class="llm-response-text" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto; line-height:1.4;"></div>
+                    <div style="margin-top:10px;">
+                        <button id="downloadAnswerBtn">Скачать рекомендации</button>
+                        <select id="downloadFormatSelect" style="margin-left: 10px; padding: 5px;">
+                            <option value="txt">TXT</option>
+                            <option value="md">MD</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `;
 
-            // Исправленные стили для отображения ответа LLM (без отрицательных margin)
-            const style = document.createElement('style');
-            style.textContent = `
-                .llm-response-text {
-                    padding-top: 8px;
-                }
-                .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
-                    margin: 0.5em 0 0.3em 0 !important;
-                    color: #005f73;
-                }
-                .llm-response-text p {
-                    margin: 0 0 0.5em 0 !important;
-                    line-height: 1.4 !important;
-                }
-                .llm-response-text ul, .llm-response-text ol {
-                    margin: 0 0 0.5em 1.5em !important;
-                    padding-left: 0 !important;
-                }
-                .llm-response-text li {
-                    margin: 0.2em 0 !important;
-                }
-            `;
-            document.head.appendChild(style);
-
-            function updateSelectAll() {
-                let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
-                let allChecked = Array.from(all).every(cb=>cb.checked);
-                let selectAll = document.getElementById('selectAllCheckbox');
-                if(selectAll) selectAll.checked = allChecked;
+        // Исправленные стили для отображения ответа LLM (без отрицательных margin)
+        const style = document.createElement('style');
+        style.textContent = `
+            .llm-response-text {
+                padding-top: 8px;
             }
+            .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
+                margin: 0.5em 0 0.3em 0 !important;
+                color: #005f73;
+            }
+            .llm-response-text p {
+                margin: 0 0 0.5em 0 !important;
+                line-height: 1.4 !important;
+            }
+            .llm-response-text ul, .llm-response-text ol {
+                margin: 0 0 0.5em 1.5em !important;
+                padding-left: 0 !important;
+            }
+            .llm-response-text li {
+                margin: 0.2em 0 !important;
+            }
+        `;
+        document.head.appendChild(style);
 
-            document.querySelectorAll('.category-checkbox').forEach(cb => cb.addEventListener('change',()=>{
-                let cat = cb.dataset.category;
-                document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`).forEach(art=>art.checked=cb.checked);
-                updateSelectAll();
-            }));
-            document.querySelectorAll('.article-checkbox').forEach(art => art.addEventListener('change',()=>{
-                let cat = art.dataset.category;
-                let catCb = document.querySelector(`.category-checkbox[data-category="${cat}"]`);
-                if(catCb) catCb.checked = Array.from(document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`)).every(a=>a.checked);
-                updateSelectAll();
-            }));
+        function updateSelectAll() {
+            let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            let allChecked = Array.from(all).every(cb=>cb.checked);
             let selectAll = document.getElementById('selectAllCheckbox');
-            if(selectAll) selectAll.addEventListener('change', e=>{
-                let c = e.target.checked;
-                document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox').forEach(cb=>cb.checked=c);
+            if(selectAll) selectAll.checked = allChecked;
+        }
+
+        document.querySelectorAll('.category-checkbox').forEach(cb => cb.addEventListener('change',()=>{
+            let cat = cb.dataset.category;
+            document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`).forEach(art=>art.checked=cb.checked);
+            updateSelectAll();
+        }));
+        document.querySelectorAll('.article-checkbox').forEach(art => art.addEventListener('change',()=>{
+            let cat = art.dataset.category;
+            let catCb = document.querySelector(`.category-checkbox[data-category="${cat}"]`);
+            if(catCb) catCb.checked = Array.from(document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`)).every(a=>a.checked);
+            updateSelectAll();
+        }));
+        let selectAll = document.getElementById('selectAllCheckbox');
+        if(selectAll) selectAll.addEventListener('change', e=>{
+            let c = e.target.checked;
+            document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox').forEach(cb=>cb.checked=c);
+        });
+
+        let limitInput = document.getElementById('limitInput');
+        let loadBtn = document.getElementById('loadPagesBtn');
+        let exportMetricsBtn = document.getElementById('exportMetricsBtn');
+        let sendLLMBtn = document.getElementById('sendToLLMBtn');
+        let testDownloadBtn = document.getElementById('testDownloadBtn');
+        let statusDiv = document.getElementById('exportStatus');
+        let errorDiv = document.getElementById('exportError');
+        let progressContainer = document.getElementById('progressContainer');
+        let progressBar = document.getElementById('progressBar');
+        let llmResponseDiv = document.getElementById('llmResponse');
+        let llmResponseText = document.getElementById('llmResponseText');
+        let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
+        let downloadFormatSelect = document.getElementById('downloadFormatSelect');
+        let lastAnswer = '', lastAnswerHtml = '';
+
+        const groupingCheckbox = document.getElementById('groupingCheckbox');
+        const plainCheckbox = document.getElementById('plainLanguageCheckbox');
+        if (groupingCheckbox) {
+            groupingCheckbox.addEventListener('change', () => {
+                sessionStorage.setItem('groupingEnabled', groupingCheckbox.checked);
             });
+            const savedGrouping = sessionStorage.getItem('groupingEnabled');
+            if (savedGrouping !== null) groupingCheckbox.checked = savedGrouping === 'true';
+        }
+        if (plainCheckbox) {
+            plainCheckbox.addEventListener('change', () => {
+                sessionStorage.setItem('plainEnabled', plainCheckbox.checked);
+            });
+            const savedPlain = sessionStorage.getItem('plainEnabled');
+            if (savedPlain !== null) plainCheckbox.checked = savedPlain === 'true';
+        }
 
-            let limitInput = document.getElementById('limitInput');
-            let loadBtn = document.getElementById('loadPagesBtn');
-            let exportMetricsBtn = document.getElementById('exportMetricsBtn');
-            let sendLLMBtn = document.getElementById('sendToLLMBtn');
-            let testDownloadBtn = document.getElementById('testDownloadBtn');
-            let statusDiv = document.getElementById('exportStatus');
-            let errorDiv = document.getElementById('exportError');
-            let progressContainer = document.getElementById('progressContainer');
-            let progressBar = document.getElementById('progressBar');
-            let llmResponseDiv = document.getElementById('llmResponse');
-            let llmResponseText = document.getElementById('llmResponseText');
-            let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
-            let downloadFormatSelect = document.getElementById('downloadFormatSelect');
-            let lastAnswer = '', lastAnswerHtml = '';
+        loadBtn.onclick = loadSelectedPages;
 
-            const groupingCheckbox = document.getElementById('groupingCheckbox');
-            const plainCheckbox = document.getElementById('plainLanguageCheckbox');
-            if (groupingCheckbox) {
-                groupingCheckbox.addEventListener('change', () => {
-                    sessionStorage.setItem('groupingEnabled', groupingCheckbox.checked);
-                });
-                const savedGrouping = sessionStorage.getItem('groupingEnabled');
-                if (savedGrouping !== null) groupingCheckbox.checked = savedGrouping === 'true';
+        exportMetricsBtn.onclick = async () => {
+            errorDiv.innerText='';
+            let limitRaw=limitInput.value.trim();
+            let limit=null;
+            if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
+            if(limitRaw) limit=parseInt(limitRaw);
+            statusDiv.innerText='Загрузка...';
+            try{
+                // Для экспорта метрик без привязки к странице – собираем все
+                let metrics = await (async () => {
+                    let result = {};
+                    for(let col of ['page_views','clicks','scroll_depth','page_exits','performance_metrics']){
+                        let snap = await db.collection(col).get();
+                        let docs = [];
+                        snap.forEach(d => {
+                            let data = d.data();
+                            if(data.userAgent) delete data.userAgent;
+                            if(data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
+                            docs.push({id: d.id, ...data});
+                        });
+                        docs.sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''));
+                        let filtered = docs.filter(r => !(r.pageUrl || r.url || r.fromPage || '').includes('#/admin'));
+                        if(limit && limit>0) filtered = filtered.slice(-limit);
+                        result[col] = filtered;
+                    }
+                    return result;
+                })();
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(metrics,null,2)],{type:'application/json'})); a.download='metrics_export.json'; a.click(); URL.revokeObjectURL(a.href);
+                statusDiv.innerText='Готово!';
+            }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
+        };
+
+        function downloadMultipleFiles(filesArray) {
+            filesArray.forEach((file, index) => {
+                setTimeout(() => {
+                    const blob = new Blob([file.content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = file.name;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }, index * 500);
+            });
+        }
+
+        testDownloadBtn.onclick = async () => {
+            errorDiv.innerText='';
+            const limitRaw = limitInput.value.trim();
+            let limit = null;
+            if (limitRaw && !/^\d+$/.test(limitRaw)) {
+                errorDiv.innerText = 'Ошибка: только цифры.';
+                limitInput.value = '';
+                return;
             }
-            if (plainCheckbox) {
-                plainCheckbox.addEventListener('change', () => {
-                    sessionStorage.setItem('plainEnabled', plainCheckbox.checked);
-                });
-                const savedPlain = sessionStorage.getItem('plainEnabled');
-                if (savedPlain !== null) plainCheckbox.checked = savedPlain === 'true';
-            }
-
-            loadBtn.onclick = loadSelectedPages;
-
-            exportMetricsBtn.onclick = async () => {
-                errorDiv.innerText='';
-                let limitRaw=limitInput.value.trim();
-                let limit=null;
-                if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
-                if(limitRaw) limit=parseInt(limitRaw);
-                statusDiv.innerText='Загрузка...';
-                try{
-                    let metrics=await fetchMetrics(limit);
-                    let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(metrics,null,2)],{type:'application/json'})); a.download='metrics_export.json'; a.click(); URL.revokeObjectURL(a.href);
-                    statusDiv.innerText='Готово!';
-                }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
-            };
-
-            function downloadMultipleFiles(filesArray) {
-                filesArray.forEach((file, index) => {
-                    setTimeout(() => {
-                        const blob = new Blob([file.content], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = file.name;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                    }, index * 500);
-                });
-            }
-
-            testDownloadBtn.onclick = async () => {
-                errorDiv.innerText='';
-                const limitRaw = limitInput.value.trim();
-                let limit = null;
-                if (limitRaw && !/^\d+$/.test(limitRaw)) {
-                    errorDiv.innerText = 'Ошибка: только цифры.';
-                    limitInput.value = '';
+            if (limitRaw) limit = parseInt(limitRaw);
+            statusDiv.innerText = 'Формирование тестовых запросов...';
+            try {
+                const pageEntries = Object.entries(pagesDom);
+                if (pageEntries.length === 0) {
+                    errorDiv.innerText = 'Нет загруженных страниц.';
                     return;
                 }
-                if (limitRaw) limit = parseInt(limitRaw);
-                statusDiv.innerText = 'Формирование тестовых запросов...';
-                try {
-                    const metrics = await fetchMetrics(limit);
-                    const metricsJson = JSON.stringify(metrics, null, 2);
-                    const pageEntries = Object.entries(pagesDom);
-                    if (pageEntries.length === 0) {
-                        errorDiv.innerText = 'Нет загруженных страниц.';
-                        return;
-                    }
-                    const avoidCode = plainCheckbox.checked;
-                    const finalPrompt = getEnhancedPrompt(avoidCode);
-                    const files = [];
-                    for (let i = 0; i < pageEntries.length; i++) {
-                        const [hash, pageData] = pageEntries[i];
-                        let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
-                                   document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                        let contrastSection = '';
-                        if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
-                            contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
-                        }
-                        let query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
-                        query = cleanEmptyLines(query);
-                        files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
-                    }
-                    if (groupingCheckbox && groupingCheckbox.checked) {
-                        const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
-                        let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
-                        groupQuery = cleanEmptyLines(groupQuery);
-                        files.push({ name: 'grouping_request.txt', content: groupQuery });
-                    }
-                    downloadMultipleFiles(files);
-                    statusDiv.innerText = `Сформировано ${files.length} файлов.`;
-                } catch (err) {
-                    errorDiv.innerText = 'Ошибка: ' + err.message;
-                }
-            };
-
-            sendLLMBtn.onclick = async () => {
-                errorDiv.innerText='';
-                let limitRaw=limitInput.value.trim();
-                let limit=null;
-                if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
-                if(limitRaw) limit=parseInt(limitRaw);
-                statusDiv.innerText='Получение метрик...';
-                let metricsJson='', startTime=performance.now();
-                try{ let metrics=await fetchMetrics(limit); metricsJson=JSON.stringify(metrics,null,2); } catch(e){ errorDiv.innerText='Ошибка метрик: '+e.message; return; }
-                let pageEntries=Object.entries(pagesDom);
-                if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
-                let totalSteps = 1 + pageEntries.length;
-                if (groupingCheckbox && groupingCheckbox.checked) totalSteps += 1;
-                let currentStep = 1;
-                progressContainer.style.display='block';
-                const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
-                updateProgress(1);
-                let individualAnswers=[];
-                const targetApi='https://diletant.site:4222/test';
-                const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
-                const modelName='devstral-2:123b-cloud';
                 const avoidCode = plainCheckbox.checked;
                 const finalPrompt = getEnhancedPrompt(avoidCode);
-                for(let i=0;i<pageEntries.length;i++){
-                    let [hash, pageData]=pageEntries[i];
+                const files = [];
+                for (let i = 0; i < pageEntries.length; i++) {
+                    const [hash, pageData] = pageEntries[i];
                     let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
                                document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                    statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
+                    let metricsJson = '';
+                    try {
+                        const metrics = await fetchMetrics(limit, hash);
+                        metricsJson = JSON.stringify(metrics, null, 2);
+                    } catch(e) {
+                        errorDiv.innerText = 'Ошибка метрик: ' + e.message;
+                        return;
+                    }
                     let contrastSection = '';
                     if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
                         contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
                     }
                     let query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
                     query = cleanEmptyLines(query);
-                    try{
-                        let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
-                        if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                        let data=await resp.json();
-                        individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\n${data.response||JSON.stringify(data)}`);
-                    }catch(e){ individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\nОшибка: ${e.message}`); }
-                    updateProgress(1 + i+1);
+                    files.push({ name: `request_${i+1}_${name.replace(/[^a-zа-яё0-9]/gi, '_')}.txt`, content: query });
                 }
                 if (groupingCheckbox && groupingCheckbox.checked) {
-                    statusDiv.innerText='Группировка ответов...';
-                    let allContrastIssues = [];
-                    for (let [hash, pageData] of pageEntries) {
-                        if (pageData.contrastIssues && pageData.contrastIssues.length) {
-                            let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
-                                       document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                            allContrastIssues.push(`=== Страница: ${name} ===\n${formatContrastIssues(pageData.contrastIssues)}`);
-                        }
-                    }
-                    const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
-                    let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
+                    const individualAnswersPlaceholder = pageEntries.map((_, idx) => `--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ... ---`).join('\n\n');
+                    let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswersPlaceholder}`;
                     groupQuery = cleanEmptyLines(groupQuery);
-                    try{
-                        let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
-                        if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                        let data=await resp.json();
-                        lastAnswer = data.response || JSON.stringify(data);
-                        updateProgress(1 + pageEntries.length);
-                    }catch(e){ lastAnswer = `Ошибка группировки: ${e.message}`; }
-                } else {
-                    lastAnswer = individualAnswers.join('\n\n');
+                    files.push({ name: 'grouping_request.txt', content: groupQuery });
                 }
-                updateProgress(totalSteps);
-                if (typeof marked !== 'undefined') {
-                    try {
-                        lastAnswerHtml = marked.parse(lastAnswer);
-                    } catch(e) {
-                        lastAnswerHtml = lastAnswer.replace(/\n/g, '<br>');
+                downloadMultipleFiles(files);
+                statusDiv.innerText = `Сформировано ${files.length} файлов.`;
+            } catch (err) {
+                errorDiv.innerText = 'Ошибка: ' + err.message;
+            }
+        };
+
+        sendLLMBtn.onclick = async () => {
+            errorDiv.innerText='';
+            let limitRaw=limitInput.value.trim();
+            let limit=null;
+            if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
+            if(limitRaw) limit=parseInt(limitRaw);
+            statusDiv.innerText='Получение метрик...';
+            let pageEntries=Object.entries(pagesDom);
+            if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
+            let totalSteps = 1 + pageEntries.length;
+            if (groupingCheckbox && groupingCheckbox.checked) totalSteps += 1;
+            let currentStep = 1;
+            progressContainer.style.display='block';
+            const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
+            updateProgress(1);
+            let individualAnswers=[];
+            const targetApi='https://diletant.site:4222/test';
+            const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
+            const modelName='devstral-2:123b-cloud';
+            const avoidCode = plainCheckbox.checked;
+            const finalPrompt = getEnhancedPrompt(avoidCode);
+            for(let i=0;i<pageEntries.length;i++){
+                let [hash, pageData]=pageEntries[i];
+                let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                           document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
+                let metricsJson = '';
+                try {
+                    const metrics = await fetchMetrics(limit, hash);
+                    metricsJson = JSON.stringify(metrics, null, 2);
+                } catch(e) {
+                    errorDiv.innerText='Ошибка метрик: '+e.message;
+                    continue;
+                }
+                let contrastSection = '';
+                if (pageData.contrastIssues && pageData.contrastIssues.length > 0) {
+                    contrastSection = `\n---ВИЗУАЛЬНЫЕ ПРОБЛЕМЫ---\n${formatContrastIssues(pageData.contrastIssues)}`;
+                }
+                let query = `${finalPrompt}\n\n---МЕТРИКИ---\n${metricsJson}${contrastSection}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageData.html}`;
+                query = cleanEmptyLines(query);
+                try{
+                    let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
+                    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    let data=await resp.json();
+                    individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\n${data.response||JSON.stringify(data)}`);
+                }catch(e){ individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\nОшибка: ${e.message}`); }
+                updateProgress(1 + i+1);
+            }
+            if (groupingCheckbox && groupingCheckbox.checked) {
+                statusDiv.innerText='Группировка ответов...';
+                let allContrastIssues = [];
+                for (let [hash, pageData] of pageEntries) {
+                    if (pageData.contrastIssues && pageData.contrastIssues.length) {
+                        let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                                   document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                        allContrastIssues.push(`=== Страница: ${name} ===\n${formatContrastIssues(pageData.contrastIssues)}`);
                     }
-                } else {
+                }
+                const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
+                let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
+                groupQuery = cleanEmptyLines(groupQuery);
+                try{
+                    let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
+                    if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                    let data=await resp.json();
+                    lastAnswer = data.response || JSON.stringify(data);
+                    updateProgress(1 + pageEntries.length);
+                }catch(e){ lastAnswer = `Ошибка группировки: ${e.message}`; }
+            } else {
+                lastAnswer = individualAnswers.join('\n\n');
+            }
+            updateProgress(totalSteps);
+            if (typeof marked !== 'undefined') {
+                try {
+                    lastAnswerHtml = marked.parse(lastAnswer);
+                } catch(e) {
                     lastAnswerHtml = lastAnswer.replace(/\n/g, '<br>');
                 }
-                llmResponseText.innerHTML = lastAnswerHtml;
-                llmResponseDiv.style.display='block';
-                let elapsed=((performance.now()-startTime)/1000).toFixed(2);
-                statusDiv.innerText=`Готово! Время: ${elapsed} сек.`;
-                progressContainer.style.display='none';
-            };
+            } else {
+                lastAnswerHtml = lastAnswer.replace(/\n/g, '<br>');
+            }
+            llmResponseText.innerHTML = lastAnswerHtml;
+            llmResponseDiv.style.display='block';
+            let elapsed=((performance.now()-startTime)/1000).toFixed(2);
+            statusDiv.innerText=`Готово! Время: ${elapsed} сек.`;
+            progressContainer.style.display='none';
+        };
 
-            downloadAnswerBtn.onclick = () => {
-                if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; }
-                const format = downloadFormatSelect.value;
-                if(format === 'txt'){
-                    let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href);
-                } else if(format === 'md'){
-                    let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/markdown'})); a.download='llm_response.md'; a.click(); URL.revokeObjectURL(a.href);
-                }
-            };
+        downloadAnswerBtn.onclick = () => {
+            if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; }
+            const format = downloadFormatSelect.value;
+            if(format === 'txt'){
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href);
+            } else if(format === 'md'){
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/markdown'})); a.download='llm_response.md'; a.click(); URL.revokeObjectURL(a.href);
+            }
+        };
 
-            restoreCheckboxesState();
-        }
+        restoreCheckboxesState();
+    }
 
-        const originalRouter = window.originalRouterForAdmin;
-        function adminAwareRouter() {
-            let hash = location.hash.slice(1);
-            if (hash === '/admin') {
-                if (!adminActive) {
-                    if (sessionStorage.getItem('adminAuthenticated') === 'true') {
-                        adminActive = true;
-                        originalContent = sessionStorage.getItem('adminOriginalContent') || document.getElementById('content').innerHTML;
-                        showAdminPanel();
-                    } else {
-                        showAdminLogin();
-                    }
-                } else if (originalContent && document.getElementById('content').innerHTML !== originalContent) {
-                    document.getElementById('content').innerHTML = originalContent;
+    const originalRouter = window.originalRouterForAdmin;
+    function adminAwareRouter() {
+        let hash = location.hash.slice(1);
+        if (hash === '/admin') {
+            if (!adminActive) {
+                if (sessionStorage.getItem('adminAuthenticated') === 'true') {
+                    adminActive = true;
+                    originalContent = sessionStorage.getItem('adminOriginalContent') || document.getElementById('content').innerHTML;
                     showAdminPanel();
+                } else {
+                    showAdminLogin();
                 }
-                return;
+            } else if (originalContent && document.getElementById('content').innerHTML !== originalContent) {
+                document.getElementById('content').innerHTML = originalContent;
+                showAdminPanel();
             }
-            if (adminActive) {
-                if (originalContent) document.getElementById('content').innerHTML = originalContent;
-                adminActive = false;
-            }
-            if (originalRouter) originalRouter();
+            return;
         }
-        window.addEventListener('hashchange', adminAwareRouter);
-        window.addEventListener('DOMContentLoaded', adminAwareRouter);
-        if (location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
-    })();
-    </script>
-    <!-- END_ADMIN -->
+        if (adminActive) {
+            if (originalContent) document.getElementById('content').innerHTML = originalContent;
+            adminActive = false;
+        }
+        if (originalRouter) originalRouter();
+    }
+    window.addEventListener('hashchange', adminAwareRouter);
+    window.addEventListener('DOMContentLoaded', adminAwareRouter);
+    if (location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
+})();
+</script>
+<!-- END_ADMIN -->
 </body>
 </html>
