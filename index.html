@@ -662,6 +662,7 @@
     let originalContent = null;
     let pagesDom = {};
     let selectedPagesHashes = new Set();
+    let originalAddMethod = null; // для переопределения Firestore
 
     // ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
     function loadScripts() {
@@ -670,9 +671,6 @@
             script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
             script.async = false;
             document.head.appendChild(script);
-        }
-        if (typeof html2pdf === 'undefined') {
-            // больше не нужен, но оставим для совместимости
         }
     }
     loadScripts();
@@ -785,6 +783,13 @@
 
     async function captureDomByHash(hash) {
         const originalHash = window.location.hash;
+        // Полное отключение метрик: переопределяем add на время захвата
+        if (window.db && window.db.collection) {
+            originalAddMethod = window.db.collection().add;
+            window.db.collection = () => ({
+                add: async () => {}
+            });
+        }
         window.METRIKA_DISABLED = true;
         window.location.hash = hash;
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -793,6 +798,10 @@
         window.location.hash = originalHash;
         await new Promise(resolve => setTimeout(resolve, 100));
         window.METRIKA_DISABLED = false;
+        if (originalAddMethod && window.db) {
+            window.db.collection = () => ({ add: originalAddMethod });
+            originalAddMethod = null;
+        }
         return { html: domHtml, contrastIssues };
     }
 
@@ -966,7 +975,6 @@
         return text;
     }
 
-    // Очистка пустых строк (удаляем строки, состоящие только из пробелов и табуляций)
     function cleanEmptyLines(str) {
         if (!str) return str;
         return str.split('\n').filter(line => line.trim().length > 0).join('\n');
@@ -1025,6 +1033,10 @@
         if (groupingCheckbox && sessionStorage.getItem('groupingEnabled') !== null) {
             groupingCheckbox.checked = sessionStorage.getItem('groupingEnabled') === 'true';
         }
+        const plainCheckbox = document.getElementById('plainLanguageCheckbox');
+        if (plainCheckbox && sessionStorage.getItem('plainEnabled') !== null) {
+            plainCheckbox.checked = sessionStorage.getItem('plainEnabled') === 'true';
+        }
     }
 
     function showAdminLogin() {
@@ -1032,8 +1044,13 @@
         document.getElementById('content').innerHTML = `<div class="admin-container" style="max-width: 90%;"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
         document.getElementById('password').type='password';
         document.getElementById('loginBtn').onclick = () => {
-            if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') showAdminPanel();
-            else document.getElementById('loginError').innerText = 'Неверный логин или пароль';
+            if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') {
+                sessionStorage.setItem('adminAuthenticated', 'true');
+                sessionStorage.setItem('adminOriginalContent', originalContent);
+                showAdminPanel();
+            } else {
+                document.getElementById('loginError').innerText = 'Неверный логин или пароль';
+            }
         };
         adminActive = true;
     }
@@ -1062,7 +1079,7 @@
                     </div>
                     <div style="display: flex; align-items: center; gap: 5px;">
                         <input type="checkbox" id="plainLanguageCheckbox">
-                        <label style="color: black; white-space: nowrap;">Без упоминания кода (запретить CSS-свойства, hex-коды, теги)</label>
+                        <label style="color: black; white-space: nowrap;">Без упоминания кода</label>
                     </div>
                 </div>
                 <div style="margin-top:20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -1071,14 +1088,14 @@
                     <button id="sendToLLMBtn" style="background-color:#6c757d;">Получить рекомендации</button>
                     <div style="display: flex; align-items: center; gap: 5px; margin-left: 10px;">
                         <input type="checkbox" id="groupingCheckbox" checked>
-                        <label style="color: black; white-space: nowrap;">Группировать рекомендации</label>
+                        <label style="color: black; white-space: nowrap;">Группировка</label>
                     </div>
                 </div>
                 <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
                 <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
                 <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
                     <h3 style="color: black;">Ответ от LLM</h3>
-                    <div id="llmResponseText" class="llm-response-text" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto; line-height:1.3;"></div>
+                    <div id="llmResponseText" class="llm-response-text" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto; line-height:1.4;"></div>
                     <div style="margin-top:10px;">
                         <button id="downloadAnswerBtn">Скачать рекомендации</button>
                         <select id="downloadFormatSelect" style="margin-left: 10px; padding: 5px;">
@@ -1090,29 +1107,26 @@
             </div>
         `;
 
-        // Стили для отображения ответа LLM (только для админ-панели)
+        // Исправленные стили для отображения ответа LLM (без отрицательных margin)
         const style = document.createElement('style');
         style.textContent = `
-            .llm-response-text * {
-                margin: 0 !important;
-                padding: 0 !important;
-                line-height: 1.3 !important;
+            .llm-response-text {
+                padding-top: 8px;
             }
             .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
-                margin-top: 0.2em !important;
-                margin-bottom: 0.1em !important;
+                margin: 0.5em 0 0.3em 0 !important;
                 color: #005f73;
             }
             .llm-response-text p {
-                margin: -1.5em 0 !important;
+                margin: 0 0 0.5em 0 !important;
+                line-height: 1.4 !important;
             }
             .llm-response-text ul, .llm-response-text ol {
-                margin-top: -0.9em !important;
-                margin-bottom: 0.2em !important;
-                padding-left: 1.5em !important;
+                margin: 0 0 0.5em 1.5em !important;
+                padding-left: 0 !important;
             }
             .llm-response-text li {
-                margin: -0.50em 0 !important;
+                margin: 0.2em 0 !important;
             }
         `;
         document.head.appendChild(style);
@@ -1154,16 +1168,23 @@
         let llmResponseText = document.getElementById('llmResponseText');
         let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
         let downloadFormatSelect = document.getElementById('downloadFormatSelect');
-        let lastQuery = '', lastAnswer = '', lastAnswerHtml = '';
+        let lastAnswer = '', lastAnswerHtml = '';
 
-        // Сохраняем состояние чекбокса группировки
         const groupingCheckbox = document.getElementById('groupingCheckbox');
+        const plainCheckbox = document.getElementById('plainLanguageCheckbox');
         if (groupingCheckbox) {
             groupingCheckbox.addEventListener('change', () => {
                 sessionStorage.setItem('groupingEnabled', groupingCheckbox.checked);
             });
             const savedGrouping = sessionStorage.getItem('groupingEnabled');
             if (savedGrouping !== null) groupingCheckbox.checked = savedGrouping === 'true';
+        }
+        if (plainCheckbox) {
+            plainCheckbox.addEventListener('change', () => {
+                sessionStorage.setItem('plainEnabled', plainCheckbox.checked);
+            });
+            const savedPlain = sessionStorage.getItem('plainEnabled');
+            if (savedPlain !== null) plainCheckbox.checked = savedPlain === 'true';
         }
 
         loadBtn.onclick = loadSelectedPages;
@@ -1217,7 +1238,7 @@
                     errorDiv.innerText = 'Нет загруженных страниц.';
                     return;
                 }
-                const avoidCode = document.getElementById('plainLanguageCheckbox').checked;
+                const avoidCode = plainCheckbox.checked;
                 const finalPrompt = getEnhancedPrompt(avoidCode);
                 const files = [];
                 for (let i = 0; i < pageEntries.length; i++) {
@@ -1239,7 +1260,7 @@
                     files.push({ name: 'grouping_request.txt', content: groupQuery });
                 }
                 downloadMultipleFiles(files);
-                statusDiv.innerText = `Сформировано ${files.length} файлов. Начинается загрузка...`;
+                statusDiv.innerText = `Сформировано ${files.length} файлов.`;
             } catch (err) {
                 errorDiv.innerText = 'Ошибка: ' + err.message;
             }
@@ -1257,7 +1278,7 @@
             let pageEntries=Object.entries(pagesDom);
             if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
             let totalSteps = 1 + pageEntries.length;
-            if (groupingCheckbox && groupingCheckbox.checked) totalSteps += 1; // + группировка
+            if (groupingCheckbox && groupingCheckbox.checked) totalSteps += 1;
             let currentStep = 1;
             progressContainer.style.display='block';
             const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
@@ -1266,7 +1287,7 @@
             const targetApi='https://diletant.site:4222/test';
             const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
             const modelName='devstral-2:123b-cloud';
-            const avoidCode = document.getElementById('plainLanguageCheckbox').checked;
+            const avoidCode = plainCheckbox.checked;
             const finalPrompt = getEnhancedPrompt(avoidCode);
             for(let i=0;i<pageEntries.length;i++){
                 let [hash, pageData]=pageEntries[i];
@@ -1283,8 +1304,8 @@
                     let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     let data=await resp.json();
-                    individualAnswers.push(`--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ${name} ---\n${data.response||JSON.stringify(data)}`);
-                }catch(e){ individualAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${name} ---\n${e.message}`); }
+                    individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\n${data.response||JSON.stringify(data)}`);
+                }catch(e){ individualAnswers.push(`${groupingCheckbox.checked ? '--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ' + name + ' ---' : '# Рекомендации для страницы: ' + name}\nОшибка: ${e.message}`); }
                 updateProgress(1 + i+1);
             }
             if (groupingCheckbox && groupingCheckbox.checked) {
@@ -1300,7 +1321,6 @@
                 const visualSummary = allContrastIssues.length ? `\n\n---ОБЩАЯ СВОДКА ВИЗУАЛЬНЫХ ПРОБЛЕМ (контрастность)---\n${allContrastIssues.join('\n\n')}` : '';
                 let groupQuery = `${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}${visualSummary}`;
                 groupQuery = cleanEmptyLines(groupQuery);
-                lastQuery = groupQuery;
                 try{
                     let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1309,10 +1329,7 @@
                     updateProgress(1 + pageEntries.length);
                 }catch(e){ lastAnswer = `Ошибка группировки: ${e.message}`; }
             } else {
-                // Без группировки: просто объединяем индивидуальные ответы
                 lastAnswer = individualAnswers.join('\n\n');
-                lastQuery = ''; // не сохраняем запрос
-                updateProgress(totalSteps);
             }
             updateProgress(totalSteps);
             if (typeof marked !== 'undefined') {
@@ -1327,7 +1344,7 @@
             llmResponseText.innerHTML = lastAnswerHtml;
             llmResponseDiv.style.display='block';
             let elapsed=((performance.now()-startTime)/1000).toFixed(2);
-            statusDiv.innerText=`Готово! Время выполнения: ${elapsed} сек.`;
+            statusDiv.innerText=`Готово! Время: ${elapsed} сек.`;
             progressContainer.style.display='none';
         };
 
@@ -1347,23 +1364,31 @@
     const originalRouter = window.originalRouterForAdmin;
     function adminAwareRouter() {
         let hash = location.hash.slice(1);
-        if(hash === '/admin'){
-            if(!adminActive) showAdminLogin();
-            else if(originalContent && document.getElementById('content').innerHTML !== originalContent){
+        if (hash === '/admin') {
+            if (!adminActive) {
+                // Проверяем сохранённую авторизацию
+                if (sessionStorage.getItem('adminAuthenticated') === 'true') {
+                    adminActive = true;
+                    originalContent = sessionStorage.getItem('adminOriginalContent') || document.getElementById('content').innerHTML;
+                    showAdminPanel();
+                } else {
+                    showAdminLogin();
+                }
+            } else if (originalContent && document.getElementById('content').innerHTML !== originalContent) {
                 document.getElementById('content').innerHTML = originalContent;
                 showAdminPanel();
             }
             return;
         }
-        if(adminActive){
-            if(originalContent) document.getElementById('content').innerHTML = originalContent;
+        if (adminActive) {
+            if (originalContent) document.getElementById('content').innerHTML = originalContent;
             adminActive = false;
         }
-        if(originalRouter) originalRouter();
+        if (originalRouter) originalRouter();
     }
     window.addEventListener('hashchange', adminAwareRouter);
     window.addEventListener('DOMContentLoaded', adminAwareRouter);
-    if(location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
+    if (location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
 })();
 </script>
 <!-- END_ADMIN -->
