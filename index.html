@@ -655,423 +655,488 @@
     </script>
 
     <!-- ========== АДМИН-ПАНЕЛЬ (ПОЛНАЯ ВЕРСИЯ С ИСПРАВЛЕНИЯМИ) ========== -->
-    <!-- START_ADMIN -->
-    <script>
-    (function() {
-        let adminActive = false;
-        let originalContent = null;
-        let pagesDom = {};
-        let selectedPagesHashes = new Set();
+   <!-- START_ADMIN -->
+<script>
+(function() {
+    let adminActive = false;
+    let originalContent = null;
+    let pagesDom = {};
+    let selectedPagesHashes = new Set();
 
-        function loadMarked() {
-            if (typeof marked !== 'undefined') return;
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
-            script.async = false;
-            document.head.appendChild(script);
-        }
-        loadMarked();
+    function loadMarked() {
+        if (typeof marked !== 'undefined') return;
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+        script.async = false;
+        document.head.appendChild(script);
+    }
+    loadMarked();
 
-        function captureCurrentDom() {
-            const cloneDoc = document.cloneNode(true);
-            const scripts = cloneDoc.querySelectorAll('script');
-            for (let s of scripts) {
-                if (s.textContent.includes('START_ADMIN') || s.textContent.includes('adminAwareRouter') ||
-                    s.textContent.includes('showAdminLogin') || s.textContent.includes('getCleanSiteCode')) {
-                    s.remove();
-                }
+    function captureCurrentDom() {
+        const cloneDoc = document.cloneNode(true);
+        const scripts = cloneDoc.querySelectorAll('script');
+        for (let s of scripts) {
+            if (s.textContent.includes('START_ADMIN') || s.textContent.includes('adminAwareRouter') ||
+                s.textContent.includes('showAdminLogin') || s.textContent.includes('getCleanSiteCode')) {
+                s.remove();
             }
-            const adminDivs = cloneDoc.querySelectorAll('.admin-container');
-            adminDivs.forEach(el => el.remove());
-            const styleNodes = cloneDoc.querySelectorAll('style');
-            for (let st of styleNodes) if (st.textContent.includes('.admin-container')) st.remove();
-            let html = cloneDoc.documentElement.outerHTML;
-            html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
-            return '<!DOCTYPE html>\n' + html;
         }
+        const adminDivs = cloneDoc.querySelectorAll('.admin-container');
+        adminDivs.forEach(el => el.remove());
+        const styleNodes = cloneDoc.querySelectorAll('style');
+        for (let st of styleNodes) if (st.textContent.includes('.admin-container')) st.remove();
+        let html = cloneDoc.documentElement.outerHTML;
+        html = html.replace(/<!-- START_ADMIN -->/g, '').replace(/<!-- END_ADMIN -->/g, '');
+        return '<!DOCTYPE html>\n' + html;
+    }
 
-        async function captureDomByHash(hash) {
-            const originalHash = window.location.hash;
-            window.METRIKA_DISABLED = true;
-            window.location.hash = hash;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const dom = captureCurrentDom();
-            window.location.hash = originalHash;
-            await new Promise(resolve => setTimeout(resolve, 100));
-            window.METRIKA_DISABLED = false;
-            return dom;
-        }
+    async function captureDomByHash(hash) {
+        const originalHash = window.location.hash;
+        window.METRIKA_DISABLED = true;
+        window.location.hash = hash;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const dom = captureCurrentDom();
+        window.location.hash = originalHash;
+        await new Promise(resolve => setTimeout(resolve, 100));
+        window.METRIKA_DISABLED = false;
+        return dom;
+    }
 
-        function getAllPages() {
-            const pages = [{ name: 'Главная', hash: '#/', type: 'main' }];
-            const categories = [
-                { name: 'Политика', hash: '#/category/politics', id: 'politics' },
-                { name: 'Спорт', hash: '#/category/sport', id: 'sport' },
-                { name: 'Технологии', hash: '#/category/tech', id: 'tech' },
-                { name: 'Наука', hash: '#/category/science', id: 'science' },
-                { name: 'Культура', hash: '#/category/culture', id: 'culture' }
-            ];
-            const articles = [
-                { name: 'Цифровой рубль', hash: '#/article/politics1', category: 'politics' },
-                { name: 'Налоговый кодекс', hash: '#/article/politics2', category: 'politics' },
-                { name: 'Футбол (Россия-Иран)', hash: '#/article/sport1', category: 'sport' },
-                { name: 'Хоккей (Кубок Первого канала)', hash: '#/article/sport2', category: 'sport' },
-                { name: 'YandexGPT 3', hash: '#/article/tech1', category: 'tech' },
-                { name: 'Квантовый процессор', hash: '#/article/tech2', category: 'tech' },
-                { name: 'Экзопланета', hash: '#/article/science1', category: 'science' },
-                { name: 'ДНК бизона', hash: '#/article/science2', category: 'science' },
-                { name: 'Выставка Репина', hash: '#/article/culture1', category: 'culture' },
-                { name: 'Балет Щелкунчик', hash: '#/article/culture2', category: 'culture' }
-            ];
-            return { pages, categories, articles };
-        }
+    function getAllPages() {
+        const pages = [{ name: 'Главная', hash: '#/', type: 'main' }];
+        const categories = [
+            { name: 'Политика', hash: '#/category/politics', id: 'politics' },
+            { name: 'Спорт', hash: '#/category/sport', id: 'sport' },
+            { name: 'Технологии', hash: '#/category/tech', id: 'tech' },
+            { name: 'Наука', hash: '#/category/science', id: 'science' },
+            { name: 'Культура', hash: '#/category/culture', id: 'culture' }
+        ];
+        const articles = [
+            { name: 'Цифровой рубль', hash: '#/article/politics1', category: 'politics' },
+            { name: 'Налоговый кодекс', hash: '#/article/politics2', category: 'politics' },
+            { name: 'Футбол (Россия-Иран)', hash: '#/article/sport1', category: 'sport' },
+            { name: 'Хоккей (Кубок Первого канала)', hash: '#/article/sport2', category: 'sport' },
+            { name: 'YandexGPT 3', hash: '#/article/tech1', category: 'tech' },
+            { name: 'Квантовый процессор', hash: '#/article/tech2', category: 'tech' },
+            { name: 'Экзопланета', hash: '#/article/science1', category: 'science' },
+            { name: 'ДНК бизона', hash: '#/article/science2', category: 'science' },
+            { name: 'Выставка Репина', hash: '#/article/culture1', category: 'culture' },
+            { name: 'Балет Щелкунчик', hash: '#/article/culture2', category: 'culture' }
+        ];
+        return { pages, categories, articles };
+    }
 
-        function buildPagesTree() {
-            const { pages, categories, articles } = getAllPages();
-            let html = `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px; font-weight: bold;">
-                <span>Страница</span><span>Выбрать</span>
+    function buildPagesTree() {
+        const { pages, categories, articles } = getAllPages();
+        let html = `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px; font-weight: bold;">
+            <span>Страница</span><span>Выбрать</span>
+        </div>`;
+        // Выбрать все
+        html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
+            <span style="font-weight: bold;">Выбрать все</span>
+            <input type="checkbox" id="selectAllCheckbox" style="margin: 0; justify-self: end;">
+        </div>`;
+        // Главная
+        html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #fff; padding: 4px 8px; border-radius: 4px;">
+            <a href="#/">${pages[0].name}</a>
+            <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0; justify-self: end;">
+        </div>`;
+        let rowColor = '#f9f9f9';
+        categories.forEach(cat => {
+            const catArticles = articles.filter(a => a.category === cat.id);
+            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
+                <strong><a href="#${cat.hash}">${cat.name}</a></strong>
+                <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0; justify-self: end;">
             </div>`;
-            // Выбрать все (через отдельный чекбокс)
-            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
-                <span style="font-weight: bold;">Выбрать все</span>
-                <input type="checkbox" id="selectAllCheckbox" style="margin: 0; justify-self: end;">
-            </div>`;
-            // Главная
-            html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #fff; padding: 4px 8px; border-radius: 4px;">
-                <a href="#/" onclick="setTimeout(()=>location.reload(),100); return false;">${pages[0].name}</a>
-                <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0; justify-self: end;">
-            </div>`;
-            let rowColor = '#f9f9f9';
-            categories.forEach(cat => {
-                const catArticles = articles.filter(a => a.category === cat.id);
-                html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-top: 4px;">
-                    <strong><a href="#${cat.hash}" onclick="setTimeout(()=>location.reload(),100); return false;">${cat.name}</a></strong>
-                    <input type="checkbox" class="category-checkbox" data-category="${cat.id}" data-category-hash="${cat.hash}" style="margin: 0; justify-self: end;">
+            rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
+            catArticles.forEach(art => {
+                html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-left: 16px;">
+                    <a href="#${art.hash}">${art.name}</a>
+                    <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0; justify-self: end;">
                 </div>`;
                 rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
-                catArticles.forEach(art => {
-                    html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: ${rowColor}; padding: 4px 8px; border-radius: 4px; margin-left: 16px;">
-                        <a href="#${art.hash}" onclick="setTimeout(()=>location.reload(),100); return false;">${art.name}</a>
-                        <input type="checkbox" class="article-checkbox" data-category="${cat.id}" data-hash="${art.hash}" style="margin: 0; justify-self: end;">
-                    </div>`;
-                    rowColor = (rowColor === '#fff') ? '#f9f9f9' : '#fff';
-                });
             });
-            return `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">${html}</div>`;
-        }
+        });
+        return `<div class="pages-tree" style="margin-top: 10px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; border-radius: 5px; background: #fafafa;">${html}</div>`;
+    }
 
-        async function loadSelectedPages() {
-            const selectedHashes = new Set();
-            document.querySelectorAll('.page-checkbox:checked, .article-checkbox:checked').forEach(cb => {
-                const hash = cb.dataset.hash;
-                if (hash) selectedHashes.add(hash);
+    async function loadSelectedPages() {
+        const selectedHashes = new Set();
+        document.querySelectorAll('.page-checkbox:checked, .article-checkbox:checked').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash) selectedHashes.add(hash);
+        });
+        document.querySelectorAll('.category-checkbox:checked').forEach(cb => {
+            const catHash = cb.dataset.categoryHash;
+            if (catHash) selectedHashes.add(catHash);
+        });
+        const hashes = Array.from(selectedHashes);
+        if (hashes.length === 0) {
+            document.getElementById('exportError').innerText = 'Выберите хотя бы одну страницу.';
+            return;
+        }
+        selectedPagesHashes.clear();
+        hashes.forEach(h => selectedPagesHashes.add(h));
+        let loaded = 0;
+        const newPagesDom = {};
+        for (const hash of hashes) {
+            const statusDiv = document.getElementById('exportStatus');
+            if (statusDiv) statusDiv.innerText = `Загрузка страниц: ${loaded+1}/${hashes.length}...`;
+            try {
+                newPagesDom[hash] = await captureDomByHash(hash);
+                loaded++;
+            } catch(e) { console.error(e); }
+        }
+        pagesDom = newPagesDom;
+        // Сохраняем состояние в sessionStorage
+        sessionStorage.setItem('pagesDom', JSON.stringify(pagesDom));
+        sessionStorage.setItem('selectedPagesHashes', JSON.stringify(Array.from(selectedPagesHashes)));
+        document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
+        document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
+        if (loaded > 0) {
+            const names = hashes.map(h => {
+                let name = h;
+                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) name = cb.parentElement.innerText.trim();
+                else {
+                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
+                    if (catCb) name = catCb.parentElement.innerText.trim();
+                }
+                return `<a href="#" onclick="location.hash='${h}'; return false;">${name}</a>`;
+            }).join(', ');
+            document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
+        } else {
+            document.getElementById('currentPageInfo').innerHTML = 'Анализируемые страницы: не выбраны';
+        }
+    }
+
+    async function fetchMetrics(limit) {
+        const cols = ['page_views','clicks','scroll_depth','page_exits','performance_metrics'];
+        let result = {};
+        for(let col of cols){
+            let snap = await db.collection(col).get();
+            let docs = [];
+            snap.forEach(d => {
+                let data = d.data();
+                if(data.userAgent) delete data.userAgent;
+                if(data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
+                docs.push({id: d.id, ...data});
             });
-            document.querySelectorAll('.category-checkbox:checked').forEach(cb => {
-                const catHash = cb.dataset.categoryHash;
-                if (catHash) selectedHashes.add(catHash);
-            });
-            const hashes = Array.from(selectedHashes);
-            if (hashes.length === 0) {
-                document.getElementById('exportError').innerText = 'Выберите хотя бы одну страницу.';
-                return;
-            }
-            selectedPagesHashes.clear();
-            hashes.forEach(h => selectedPagesHashes.add(h));
-            let loaded = 0;
-            const newPagesDom = {};
-            for (const hash of hashes) {
-                const statusDiv = document.getElementById('exportStatus');
-                if (statusDiv) statusDiv.innerText = `Загрузка страниц: ${loaded+1}/${hashes.length}...`;
-                try {
-                    newPagesDom[hash] = await captureDomByHash(hash);
-                    loaded++;
-                } catch(e) { console.error(e); }
-            }
-            pagesDom = newPagesDom;
-            document.getElementById('loadedPagesInfo').innerText = `Загружено страниц: ${loaded} из ${hashes.length}`;
-            document.getElementById('exportStatus').innerText = 'Готово! Страницы загружены.';
-            if (loaded > 0) {
-                const names = hashes.map(h => {
-                    let name = h;
-                    let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
-                    if (cb) name = cb.parentElement.innerText.trim();
-                    else {
-                        let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
-                        if (catCb) name = catCb.parentElement.innerText.trim();
-                    }
-                    return `<a href="#" onclick="location.hash='${h}'; return false;">${name}</a>`;
-                }).join(', ');
-                document.getElementById('currentPageInfo').innerHTML = `Анализируемые страницы: ${names}`;
-            } else {
-                document.getElementById('currentPageInfo').innerHTML = 'Анализируемые страницы: не выбраны';
-            }
+            docs.sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''));
+            let filtered = docs.filter(r => !(r.pageUrl || r.url || r.fromPage || '').includes('#/admin'));
+            if(col === 'page_exits') filtered = filtered.filter(r => r.timeSpentMs >= 200);
+            result[col] = (limit && limit>0) ? filtered.slice(-limit) : filtered;
         }
+        return result;
+    }
 
-        async function fetchMetrics(limit) {
-            const cols = ['page_views','clicks','scroll_depth','page_exits','performance_metrics'];
-            let result = {};
-            for(let col of cols){
-                let snap = await db.collection(col).get();
-                let docs = [];
-                snap.forEach(d => {
-                    let data = d.data();
-                    if(data.userAgent) delete data.userAgent;
-                    if(data.timestamp && data.timestamp.toDate) data.timestamp = data.timestamp.toDate().toISOString();
-                    docs.push({id: d.id, ...data});
-                });
-                docs.sort((a,b)=>(a.timestamp||'').localeCompare(b.timestamp||''));
-                let filtered = docs.filter(r => !(r.pageUrl || r.url || r.fromPage || '').includes('#/admin'));
-                if(col === 'page_exits') filtered = filtered.filter(r => r.timeSpentMs >= 200);
-                result[col] = (limit && limit>0) ? filtered.slice(-limit) : filtered;
-            }
-            return result;
-        }
+    const singlePrompt = `Ты – эксперт по UX/UI. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
+    const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
-        const singlePrompt = `Ты – эксперт по UX/UI. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
-        const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
+    // Функции для анализа контрастности
+    function getLuminance(rgb) {
+        let [r,g,b] = [rgb.r, rgb.g, rgb.b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
+        return 0.2126*r + 0.7152*g + 0.0722*b;
+    }
+    function getContrastRatio(c1,c2) {
+        let l1=getLuminance(c1), l2=getLuminance(c2);
+        return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
+    }
+    function rgbToObj(str) {
+        let m = str.match(/\d+/g);
+        return m ? {r:+m[0], g:+m[1], b:+m[2]} : null;
+    }
+    function isProblematicColorPair(rgbText, rgbBg) {
+        let sumText = rgbText.r + rgbText.g + rgbText.b;
+        let sumBg = rgbBg.r + rgbBg.g + rgbBg.b;
+        let diff = Math.abs(rgbText.r - rgbBg.r) + Math.abs(rgbText.g - rgbBg.g) + Math.abs(rgbText.b - rgbBg.b);
+        return (sumText > 500 && sumBg > 500 && diff < 80);
+    }
 
-        // Функции для анализа контрастности (расширенные)
-        function getLuminance(rgb) {
-            let [r,g,b] = [rgb.r, rgb.g, rgb.b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
-            return 0.2126*r + 0.7152*g + 0.0722*b;
-        }
-        function getContrastRatio(c1,c2) {
-            let l1=getLuminance(c1), l2=getLuminance(c2);
-            return (Math.max(l1,l2)+0.05)/(Math.min(l1,l2)+0.05);
-        }
-        function rgbToObj(str) {
-            let m = str.match(/\d+/g);
-            return m ? {r:+m[0], g:+m[1], b:+m[2]} : null;
-        }
-        function isProblematicColorPair(rgbText, rgbBg) {
-            // Дополнительная проверка на "плохие сочетания": например, белый на жёлтом, светло-серый на светло-жёлтом.
-            // Простейшая эвристика: если оба цвета имеют высокую яркость (сумма компонент > 500) и разница между RGB мала (< 80), то сочетание плохое.
-            let sumText = rgbText.r + rgbText.g + rgbText.b;
-            let sumBg = rgbBg.r + rgbBg.g + rgbBg.b;
-            let diff = Math.abs(rgbText.r - rgbBg.r) + Math.abs(rgbText.g - rgbBg.g) + Math.abs(rgbText.b - rgbBg.b);
-            return (sumText > 500 && sumBg > 500 && diff < 80);
-        }
-
-        function analyzeContrast() {
-            let issues = [];
-            for(let [hash, html] of Object.entries(pagesDom)){
-                let parser = new DOMParser();
-                let doc = parser.parseFromString(html, 'text/html');
-                let elements = doc.querySelectorAll('p, h1, h2, h3, span, a, li, button, label, strong, em');
-                for(let el of elements){
-                    let comp = getComputedStyle(el);
-                    let color = comp.color, bg = comp.backgroundColor;
-                    if(!color || !bg || color === 'rgba(0, 0, 0, 0)' || bg === 'rgba(0, 0, 0, 0)') continue;
-                    let rgbC = rgbToObj(color), rgbB = rgbToObj(bg);
-                    if(!rgbC || !rgbB) continue;
-                    let contrast = getContrastRatio(rgbC, rgbB);
-                    let problematic = isProblematicColorPair(rgbC, rgbB);
-                    if(contrast < 4.5 || problematic){
-                        issues.push({
-                            page: hash,
-                            element: el.tagName,
-                            contrast: contrast,
-                            color: color,
-                            bg: bg,
-                            reason: contrast < 4.5 ? `низкий коэффициент (${contrast.toFixed(2)} < 4.5)` : 'плохое сочетание цветов (например, белый на жёлтом)'
-                        });
-                    }
+    function analyzeContrast() {
+        let issues = [];
+        for(let [hash, html] of Object.entries(pagesDom)){
+            let parser = new DOMParser();
+            let doc = parser.parseFromString(html, 'text/html');
+            let elements = doc.querySelectorAll('p, h1, h2, h3, span, a, li, button, label, strong, em');
+            for(let el of elements){
+                let comp = getComputedStyle(el);
+                let color = comp.color, bg = comp.backgroundColor;
+                if(!color || !bg || color === 'rgba(0, 0, 0, 0)' || bg === 'rgba(0, 0, 0, 0)') continue;
+                let rgbC = rgbToObj(color), rgbB = rgbToObj(bg);
+                if(!rgbC || !rgbB) continue;
+                let contrast = getContrastRatio(rgbC, rgbB);
+                let problematic = isProblematicColorPair(rgbC, rgbB);
+                if(contrast < 4.5 || problematic){
+                    issues.push({
+                        page: hash,
+                        element: el.tagName,
+                        contrast: contrast,
+                        color: color,
+                        bg: bg,
+                        reason: contrast < 4.5 ? `низкий коэффициент (${contrast.toFixed(2)} < 4.5)` : 'плохое сочетание цветов (например, белый на жёлтом)'
+                    });
                 }
             }
-            return issues;
+        }
+        return issues;
+    }
+
+    function restoreCheckboxesState() {
+        if (selectedPagesHashes.size === 0) return;
+        document.querySelectorAll('.page-checkbox, .article-checkbox').forEach(cb => {
+            const hash = cb.dataset.hash;
+            if (hash && selectedPagesHashes.has(hash)) cb.checked = true;
+            else if (cb.classList.contains('article-checkbox') && hash && !selectedPagesHashes.has(hash)) cb.checked = false;
+        });
+        document.querySelectorAll('.category-checkbox').forEach(catCb => {
+            const categoryId = catCb.dataset.category;
+            const catHash = catCb.dataset.categoryHash;
+            if (catHash && selectedPagesHashes.has(catHash)) catCb.checked = true;
+            else {
+                const articleBoxes = document.querySelectorAll(`.article-checkbox[data-category="${categoryId}"]`);
+                const allChecked = Array.from(articleBoxes).every(art => art.checked);
+                catCb.checked = allChecked;
+            }
+        });
+        const selectAll = document.getElementById('selectAllCheckbox');
+        if (selectAll) {
+            const allBoxes = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            const allChecked = Array.from(allBoxes).every(cb => cb.checked);
+            selectAll.checked = allChecked;
+        }
+        // Обновляем информацию о загруженных страницах
+        if (Object.keys(pagesDom).length > 0) {
+            const loadedCount = Object.keys(pagesDom).length;
+            const infoSpan = document.getElementById('loadedPagesInfo');
+            if (infoSpan) infoSpan.innerText = `Загружено страниц: ${loadedCount}`;
+            const pageNames = Array.from(selectedPagesHashes).map(h => {
+                let name = h;
+                let cb = document.querySelector(`.article-checkbox[data-hash="${h}"]`);
+                if (cb) name = cb.parentElement.innerText.trim();
+                else {
+                    let catCb = document.querySelector(`.category-checkbox[data-category-hash="${h}"]`);
+                    if (catCb) name = catCb.parentElement.innerText.trim();
+                }
+                return `<a href="#" onclick="location.hash='${h}'; return false;">${name}</a>`;
+            }).join(', ');
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            const loadedPagesInfo = document.getElementById('loadedPagesInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = `Анализируемые страницы: ${pageNames}`;
+            if (loadedPagesInfo) loadedPagesInfo.innerText = `Загружено страниц: ${loadedCount}`;
+        } else {
+            const currentPageInfo = document.getElementById('currentPageInfo');
+            const loadedPagesInfo = document.getElementById('loadedPagesInfo');
+            if (currentPageInfo) currentPageInfo.innerHTML = 'Анализируемые страницы: не выбраны';
+            if (loadedPagesInfo) loadedPagesInfo.innerText = '';
+        }
+    }
+
+    function showAdminLogin() {
+        if(!originalContent) originalContent = document.getElementById('content').innerHTML;
+        document.getElementById('content').innerHTML = `<div class="admin-container"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
+        document.getElementById('password').type='password';
+        document.getElementById('loginBtn').onclick = () => {
+            if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') showAdminPanel();
+            else document.getElementById('loginError').innerText = 'Неверный логин или пароль';
+        };
+        adminActive = true;
+    }
+
+    function showAdminPanel() {
+        // Восстанавливаем сохранённое состояние из sessionStorage
+        const savedDom = sessionStorage.getItem('pagesDom');
+        const savedHashes = sessionStorage.getItem('selectedPagesHashes');
+        if (savedDom && savedHashes) {
+            pagesDom = JSON.parse(savedDom);
+            selectedPagesHashes = new Set(JSON.parse(savedHashes));
         }
 
-        function showAdminLogin() {
-            if(!originalContent) originalContent = document.getElementById('content').innerHTML;
-            document.getElementById('content').innerHTML = `<div class="admin-container"><h2>Вход в панель администратора</h2><input type="text" id="login" placeholder="Логин" /><input type="password" id="password" placeholder="Пароль" /><button id="loginBtn">Войти</button><div id="loginError" class="error"></div></div>`;
-            document.getElementById('password').type='password';
-            document.getElementById('loginBtn').onclick = () => {
-                if(document.getElementById('login').value === 'admin' && document.getElementById('password').value === '66665555') showAdminPanel();
-                else document.getElementById('loginError').innerText = 'Неверный логин или пароль';
-            };
-            adminActive = true;
-        }
-
-        function showAdminPanel() {
-            document.getElementById('content').innerHTML = `
-                <div class="admin-container">
-                    <h2>Панель экспорта метрик</h2>
-                    <label>Ограничение записей (только целое положительное число):</label>
-                    <input type="text" id="limitInput" placeholder="например, 100" />
-                    <div style="margin-top:15px;">${buildPagesTree()}</div>
-                    <div style="margin-top:10px;"><button id="loadPagesBtn">Загрузить выбранные страницы</button> <span id="loadedPagesInfo" style="margin-left:15px;"></span></div>
-                    <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color:#005f73;">Анализируемые страницы: не выбраны</div>
-                    <div style="margin-top:20px;"><button id="exportMetricsBtn">Получить метрики</button> <button id="exportFullBtn">Получить полный файл для анализа</button> <button id="sendToLLMBtn" style="background-color:#6c757d;">Отправить в LLM</button></div>
-                    <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
-                    <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
-                    <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
-                        <h3>Ответ от LLM</h3>
-                        <div id="llmResponseText" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto;"></div>
-                        <div style="margin-top:10px;"><button id="downloadQueryBtn">Скачать запрос</button> <button id="downloadAnswerBtn">Скачать ответ</button></div>
-                    </div>
+        const pagesTreeHtml = buildPagesTree();
+        document.getElementById('content').innerHTML = `
+            <div class="admin-container">
+                <h2>Панель экспорта метрик</h2>
+                <label>Ограничение записей (только целое положительное число):</label>
+                <input type="text" id="limitInput" placeholder="например, 100" />
+                <div style="margin-top:15px;">${pagesTreeHtml}</div>
+                <div style="margin-top:10px;"><button id="loadPagesBtn">Загрузить выбранные страницы</button> <span id="loadedPagesInfo" style="margin-left:15px;"></span></div>
+                <div id="currentPageInfo" style="margin-top:8px; font-size:0.9em; color:#005f73;">Анализируемые страницы: не выбраны</div>
+                <div style="margin-top:20px;"><button id="exportMetricsBtn">Получить метрики</button> <button id="exportFullBtn">Получить полный файл для анализа</button> <button id="sendToLLMBtn" style="background-color:#6c757d;">Отправить в LLM</button></div>
+                <div id="exportStatus" class="success"></div><div id="exportError" class="error"></div>
+                <div id="progressContainer" style="display:none; margin-top:10px; width:100%; background:#f0f0f0; border-radius:5px;"><div id="progressBar" style="width:0%; height:20px; background:#0a9396; border-radius:5px; text-align:center; color:white; line-height:20px;">0%</div></div>
+                <div id="llmResponse" style="margin-top:20px; padding:10px; background:white; border:1px solid #ccc; border-radius:5px; display:none;">
+                    <h3>Ответ от LLM</h3>
+                    <div id="llmResponseText" style="color:black; background:white; padding:10px; border-radius:5px; white-space:pre-wrap; max-height:400px; overflow:auto;"></div>
+                    <div style="margin-top:10px;"><button id="downloadQueryBtn">Скачать запрос</button> <button id="downloadAnswerBtn">Скачать ответ</button></div>
                 </div>
-            `;
-            document.getElementById('llmResponseText').classList.add('llm-response-text');
-            // Обработчики чекбоксов
-            function updateSelectAll(){
-                let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
-                let allChecked = Array.from(all).every(cb=>cb.checked);
-                let selectAll = document.getElementById('selectAllCheckbox');
-                if(selectAll) selectAll.checked = allChecked;
-            }
-            document.querySelectorAll('.category-checkbox').forEach(cb => cb.addEventListener('change',()=>{
-                let cat = cb.dataset.category;
-                document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`).forEach(art=>art.checked=cb.checked);
-                updateSelectAll();
-            }));
-            document.querySelectorAll('.article-checkbox').forEach(art => art.addEventListener('change',()=>{
-                let cat = art.dataset.category;
-                let catCb = document.querySelector(`.category-checkbox[data-category="${cat}"]`);
-                if(catCb) catCb.checked = Array.from(document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`)).every(a=>a.checked);
-                updateSelectAll();
-            }));
+            </div>
+        `;
+        document.getElementById('llmResponseText').classList.add('llm-response-text');
+
+        function updateSelectAll(){
+            let all = document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox');
+            let allChecked = Array.from(all).every(cb=>cb.checked);
             let selectAll = document.getElementById('selectAllCheckbox');
-            if(selectAll) selectAll.addEventListener('change', e=>{
-                let c = e.target.checked;
-                document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox').forEach(cb=>cb.checked=c);
-            });
+            if(selectAll) selectAll.checked = allChecked;
+        }
 
-            let limitInput = document.getElementById('limitInput');
-            let loadBtn = document.getElementById('loadPagesBtn');
-            let exportMetricsBtn = document.getElementById('exportMetricsBtn');
-            let exportFullBtn = document.getElementById('exportFullBtn');
-            let sendLLMBtn = document.getElementById('sendToLLMBtn');
-            let statusDiv = document.getElementById('exportStatus');
-            let errorDiv = document.getElementById('exportError');
-            let progressContainer = document.getElementById('progressContainer');
-            let progressBar = document.getElementById('progressBar');
-            let llmResponseDiv = document.getElementById('llmResponse');
-            let llmResponseText = document.getElementById('llmResponseText');
-            let downloadQueryBtn = document.getElementById('downloadQueryBtn');
-            let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
-            let lastQuery='', lastAnswer='';
+        document.querySelectorAll('.category-checkbox').forEach(cb => cb.addEventListener('change',()=>{
+            let cat = cb.dataset.category;
+            document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`).forEach(art=>art.checked=cb.checked);
+            updateSelectAll();
+        }));
+        document.querySelectorAll('.article-checkbox').forEach(art => art.addEventListener('change',()=>{
+            let cat = art.dataset.category;
+            let catCb = document.querySelector(`.category-checkbox[data-category="${cat}"]`);
+            if(catCb) catCb.checked = Array.from(document.querySelectorAll(`.article-checkbox[data-category="${cat}"]`)).every(a=>a.checked);
+            updateSelectAll();
+        }));
+        let selectAll = document.getElementById('selectAllCheckbox');
+        if(selectAll) selectAll.addEventListener('change', e=>{
+            let c = e.target.checked;
+            document.querySelectorAll('.page-checkbox, .category-checkbox, .article-checkbox').forEach(cb=>cb.checked=c);
+        });
 
-            loadBtn.onclick = loadSelectedPages;
+        let limitInput = document.getElementById('limitInput');
+        let loadBtn = document.getElementById('loadPagesBtn');
+        let exportMetricsBtn = document.getElementById('exportMetricsBtn');
+        let exportFullBtn = document.getElementById('exportFullBtn');
+        let sendLLMBtn = document.getElementById('sendToLLMBtn');
+        let statusDiv = document.getElementById('exportStatus');
+        let errorDiv = document.getElementById('exportError');
+        let progressContainer = document.getElementById('progressContainer');
+        let progressBar = document.getElementById('progressBar');
+        let llmResponseDiv = document.getElementById('llmResponse');
+        let llmResponseText = document.getElementById('llmResponseText');
+        let downloadQueryBtn = document.getElementById('downloadQueryBtn');
+        let downloadAnswerBtn = document.getElementById('downloadAnswerBtn');
+        let lastQuery='', lastAnswer='';
 
-            exportMetricsBtn.onclick = async () => {
-                errorDiv.innerText='';
-                let limitRaw=limitInput.value.trim();
-                let limit=null;
-                if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
-                if(limitRaw) limit=parseInt(limitRaw);
-                statusDiv.innerText='Загрузка...';
+        loadBtn.onclick = loadSelectedPages;
+
+        exportMetricsBtn.onclick = async () => {
+            errorDiv.innerText='';
+            let limitRaw=limitInput.value.trim();
+            let limit=null;
+            if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
+            if(limitRaw) limit=parseInt(limitRaw);
+            statusDiv.innerText='Загрузка...';
+            try{
+                let metrics=await fetchMetrics(limit);
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(metrics,null,2)],{type:'application/json'})); a.download='metrics_export.json'; a.click(); URL.revokeObjectURL(a.href);
+                statusDiv.innerText='Готово!';
+            }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
+        };
+
+        exportFullBtn.onclick = async () => {
+            errorDiv.innerText='';
+            let limitRaw=limitInput.value.trim();
+            let limit=null;
+            if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
+            if(limitRaw) limit=parseInt(limitRaw);
+            statusDiv.innerText='Загрузка...';
+            try{
+                let metrics=await fetchMetrics(limit);
+                let metricsJson=JSON.stringify(metrics,null,2);
+                let pagesCode=''; for(let [hash,html] of Object.entries(pagesDom)) pagesCode+=`\n===== СТРАНИЦА: ${hash} =====\n${html}`;
+                let content=`---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
+                let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:'text/plain'})); a.download='full_export.txt'; a.click(); URL.revokeObjectURL(a.href);
+                statusDiv.innerText='Готово!';
+            }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
+        };
+
+        sendLLMBtn.onclick = async () => {
+            errorDiv.innerText='';
+            let limitRaw=limitInput.value.trim();
+            let limit=null;
+            if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
+            if(limitRaw) limit=parseInt(limitRaw);
+            statusDiv.innerText='Получение метрик...';
+            let metricsJson='', startTime=performance.now();
+            try{ let metrics=await fetchMetrics(limit); metricsJson=JSON.stringify(metrics,null,2); } catch(e){ errorDiv.innerText='Ошибка метрик: '+e.message; return; }
+            let pageEntries=Object.entries(pagesDom);
+            if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
+            let totalSteps = 1 + pageEntries.length + 1 + 1;
+            let currentStep = 1;
+            progressContainer.style.display='block';
+            const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
+            updateProgress(1);
+            let individualAnswers=[];
+            const targetApi='https://diletant.site:4222/test';
+            const apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf';
+            const modelName='devstral-2:123b-cloud';
+            for(let i=0;i<pageEntries.length;i++){
+                let [hash,pageHtml]=pageEntries[i];
+                let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                           document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
+                let query=`${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageHtml}`;
                 try{
-                    let metrics=await fetchMetrics(limit);
-                    let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(metrics,null,2)],{type:'application/json'})); a.download='metrics_export.json'; a.click(); URL.revokeObjectURL(a.href);
-                    statusDiv.innerText='Готово!';
-                }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
-            };
-
-            exportFullBtn.onclick = async () => {
-                errorDiv.innerText='';
-                let limitRaw=limitInput.value.trim();
-                let limit=null;
-                if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
-                if(limitRaw) limit=parseInt(limitRaw);
-                statusDiv.innerText='Загрузка...';
-                try{
-                    let metrics=await fetchMetrics(limit);
-                    let metricsJson=JSON.stringify(metrics,null,2);
-                    let pagesCode=''; for(let [hash,html] of Object.entries(pagesDom)) pagesCode+=`\n===== СТРАНИЦА: ${hash} =====\n${html}`;
-                    let content=`---METRICS---\n${metricsJson}\n---SITE_CODE---\n${pagesCode}`;
-                    let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type:'text/plain'})); a.download='full_export.txt'; a.click(); URL.revokeObjectURL(a.href);
-                    statusDiv.innerText='Готово!';
-                }catch(e){ errorDiv.innerText='Ошибка: '+e.message; }
-            };
-
-            sendLLMBtn.onclick = async () => {
-                errorDiv.innerText='';
-                let limitRaw=limitInput.value.trim();
-                let limit=null;
-                if(limitRaw && !/^\d+$/.test(limitRaw)){ errorDiv.innerText='Ошибка: только цифры.'; limitInput.value=''; return; }
-                if(limitRaw) limit=parseInt(limitRaw);
-                statusDiv.innerText='Получение метрик...';
-                let metricsJson='', startTime=performance.now();
-                try{ let metrics=await fetchMetrics(limit); metricsJson=JSON.stringify(metrics,null,2); } catch(e){ errorDiv.innerText='Ошибка метрик: '+e.message; return; }
-                let pageEntries=Object.entries(pagesDom);
-                if(pageEntries.length===0){ errorDiv.innerText='Нет загруженных страниц.'; return; }
-                let totalSteps = 1 + pageEntries.length + 1 + 1; // метрики, запросы, группировка, контрастность
-                let currentStep = 1;
-                progressContainer.style.display='block';
-                const updateProgress = (step) => { currentStep=step; let percent=Math.round((currentStep/totalSteps)*100); progressBar.style.width=percent+'%'; progressBar.innerText=percent+'%'; };
-                updateProgress(1);
-                let individualAnswers=[];
-                const targetApi='https://diletant.site:4222/test', apiKey='e0b2d1a98c244b49b709c5e52786e5d4.AnpkMH9QcKDNfOSpw6opmkuf', modelName='devstral-2:123b-cloud';
-                for(let i=0;i<pageEntries.length;i++){
-                    let [hash,pageHtml]=pageEntries[i];
-                    let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
-                               document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
-                    statusDiv.innerText=`Анализ "${name}" (${i+1}/${pageEntries.length})...`;
-                    let query=`${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---СТРАНИЦА---\n===== ${name} (${hash}) =====\n${pageHtml}`;
-                    try{
-                        let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
-                        if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                        let data=await resp.json();
-                        individualAnswers.push(`--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ${name} ---\n${data.response||JSON.stringify(data)}`);
-                    }catch(e){ individualAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${name} ---\n${e.message}`); }
-                    updateProgress(1 + i+1);
-                }
-                statusDiv.innerText='Группировка ответов...';
-                let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
-                lastQuery=groupQuery;
-                try{
-                    let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
+                    let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:query,stream:false})});
                     if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
                     let data=await resp.json();
-                    lastAnswer=data.response||JSON.stringify(data);
-                    updateProgress(1 + pageEntries.length +1);
-                }catch(e){ lastAnswer=`Ошибка группировки: ${e.message}`; }
-                // Анализ контрастности
-                let contrastIssues = analyzeContrast();
-                if(contrastIssues.length>0){
-                    lastAnswer+='\n\n## Анализ контрастности\n';
-                    let byPage={};
-                    contrastIssues.forEach(iss=>{ if(!byPage[iss.page]) byPage[iss.page]=[]; byPage[iss.page].push(iss); });
-                    for(let [page,issues] of Object.entries(byPage)){
-                        lastAnswer+=`\n### Страница: ${page}\n`;
-                        issues.forEach(iss=>lastAnswer+=`- Элемент **${iss.element}**: ${iss.reason}. Цвет текста: ${iss.color}, фон: ${iss.bg}\n`);
-                    }
-                } else lastAnswer+='\n\n## Анализ контрастности\nВсе текстовые элементы имеют достаточную контрастность (≥4.5) и нет проблемных цветовых сочетаний.';
-                updateProgress(totalSteps);
-                let formatted = (typeof marked!=='undefined') ? marked.parse(lastAnswer) : lastAnswer.replace(/\n/g,'<br>');
-                llmResponseText.innerHTML=formatted;
-                llmResponseDiv.style.display='block';
-                let elapsed=((performance.now()-startTime)/1000).toFixed(2);
-                statusDiv.innerText=`Готово! Время выполнения: ${elapsed} сек.`;
-                progressContainer.style.display='none';
-            };
-
-            downloadQueryBtn.onclick = () => { if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'})); a.download='llm_query.txt'; a.click(); URL.revokeObjectURL(a.href); };
-            downloadAnswerBtn.onclick = () => { if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href); };
-        }
-
-        const originalRouter = window.originalRouterForAdmin;
-        function adminAwareRouter() {
-            let hash = location.hash.slice(1);
-            if(hash === '/admin'){
-                if(!adminActive) showAdminLogin();
-                else if(originalContent && document.getElementById('content').innerHTML !== originalContent){
-                    document.getElementById('content').innerHTML = originalContent;
-                    showAdminPanel();
+                    individualAnswers.push(`--- ОТВЕТ ДЛЯ СТРАНИЦЫ: ${name} ---\n${data.response||JSON.stringify(data)}`);
+                }catch(e){ individualAnswers.push(`--- ОШИБКА ДЛЯ СТРАНИЦЫ: ${name} ---\n${e.message}`); }
+                updateProgress(1 + i+1);
+            }
+            statusDiv.innerText='Группировка ответов...';
+            let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
+            lastQuery=groupQuery;
+            try{
+                let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
+                if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                let data=await resp.json();
+                lastAnswer=data.response||JSON.stringify(data);
+                updateProgress(1 + pageEntries.length +1);
+            }catch(e){ lastAnswer=`Ошибка группировки: ${e.message}`; }
+            let contrastIssues = analyzeContrast();
+            if(contrastIssues.length>0){
+                lastAnswer+='\n\n## Анализ контрастности\n';
+                let byPage={};
+                contrastIssues.forEach(iss=>{ if(!byPage[iss.page]) byPage[iss.page]=[]; byPage[iss.page].push(iss); });
+                for(let [page,issues] of Object.entries(byPage)){
+                    lastAnswer+=`\n### Страница: ${page}\n`;
+                    issues.forEach(iss=>lastAnswer+=`- Элемент **${iss.element}**: ${iss.reason}. Цвет текста: ${iss.color}, фон: ${iss.bg}\n`);
                 }
-                return;
+            } else lastAnswer+='\n\n## Анализ контрастности\nВсе текстовые элементы имеют достаточную контрастность (≥4.5) и нет проблемных цветовых сочетаний.';
+            updateProgress(totalSteps);
+            let formatted = (typeof marked!=='undefined') ? marked.parse(lastAnswer) : lastAnswer.replace(/\n/g,'<br>');
+            llmResponseText.innerHTML=formatted;
+            llmResponseDiv.style.display='block';
+            let elapsed=((performance.now()-startTime)/1000).toFixed(2);
+            statusDiv.innerText=`Готово! Время выполнения: ${elapsed} сек.`;
+            progressContainer.style.display='none';
+        };
+
+        downloadQueryBtn.onclick = () => { if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'})); a.download='llm_query.txt'; a.click(); URL.revokeObjectURL(a.href); };
+        downloadAnswerBtn.onclick = () => { if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; } let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href); };
+
+        // Восстанавливаем состояние чекбоксов и информацию о загруженных страницах
+        restoreCheckboxesState();
+    }
+
+    const originalRouter = window.originalRouterForAdmin;
+    function adminAwareRouter() {
+        let hash = location.hash.slice(1);
+        if(hash === '/admin'){
+            if(!adminActive) showAdminLogin();
+            else if(originalContent && document.getElementById('content').innerHTML !== originalContent){
+                document.getElementById('content').innerHTML = originalContent;
+                showAdminPanel();
             }
-            if(adminActive){
-                if(originalContent) document.getElementById('content').innerHTML = originalContent;
-                adminActive = false;
-            }
-            if(originalRouter) originalRouter();
+            return;
         }
-        window.addEventListener('hashchange', adminAwareRouter);
-        window.addEventListener('DOMContentLoaded', adminAwareRouter);
-        if(location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
-    })();
-    </script>
-    <!-- END_ADMIN -->
+        if(adminActive){
+            if(originalContent) document.getElementById('content').innerHTML = originalContent;
+            adminActive = false;
+        }
+        if(originalRouter) originalRouter();
+    }
+    window.addEventListener('hashchange', adminAwareRouter);
+    window.addEventListener('DOMContentLoaded', adminAwareRouter);
+    if(location.hash.slice(1) === '/admin') setTimeout(adminAwareRouter, 0);
+})();
+</script>
+<!-- END_ADMIN -->
 </body>
 </html>
