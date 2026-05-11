@@ -663,7 +663,6 @@
     let pagesDom = {};
     let selectedPagesHashes = new Set();
 
-    // Подключение marked и html2pdf
     function loadScripts() {
         if (typeof marked === 'undefined') {
             const script = document.createElement('script');
@@ -739,12 +738,10 @@
         let html = `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-bottom: 8px; font-weight: bold; color: black;">
             <span>Страница</span><span>Выбрать</span>
         </div>`;
-        // Выбрать все
         html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; margin-bottom: 8px;">
             <span style="font-weight: bold; color: black;">Выбрать все</span>
             <input type="checkbox" id="selectAllCheckbox" style="margin: 0; justify-self: end;">
         </div>`;
-        // Главная
         html += `<div style="display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 8px; background: #fff; padding: 4px 8px; border-radius: 4px;">
             <a href="#/" style="color: black; text-decoration: none; cursor: pointer;">${pages[0].name}</a>
             <input type="checkbox" class="page-checkbox" data-hash="#/" style="margin: 0; justify-self: end;">
@@ -837,11 +834,9 @@
         return result;
     }
 
-    // Промпты — убраны рекомендации для мобильных устройств, акцент на десктоп
     const singlePrompt = `Ты – эксперт по UX/UI для десктопных веб-сайтов. Проанализируй метрики и HTML страницы. Дай понятные рекомендации (без технических терминов). Опирайся на цифры. Игнорируй сессии <200 мс. Не давай рекомендации для мобильных устройств, только для экранов компьютеров. Формат: ## Проблемы, ## Рекомендации, ## Приоритетность действий.`;
     const groupPrompt = `Ты – эксперт. Объедини похожие проблемы и рекомендации из разных страниц. Убери дубликаты, сгруппируй по смыслу. Сохрани важные детали. Не выводи информацию о контрастности, если нет проблем. Формат: ## Проблемы (общие/специфичные), ## Рекомендации, ## Приоритетность действий. Вывод на русском.`;
 
-    // Функции для анализа контрастности (возвращает только проблемы, без сообщения об отсутствии)
     function getLuminance(rgb) {
         let [r,g,b] = [rgb.r, rgb.g, rgb.b].map(v => { v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055, 2.4); });
         return 0.2126*r + 0.7152*g + 0.0722*b;
@@ -913,7 +908,6 @@
             const allChecked = Array.from(allBoxes).every(cb => cb.checked);
             selectAll.checked = allChecked;
         }
-        // Обновляем информацию о загруженных страницах
         if (Object.keys(pagesDom).length > 0) {
             const loadedCount = Object.keys(pagesDom).length;
             const infoSpan = document.getElementById('loadedPagesInfo');
@@ -952,7 +946,6 @@
     }
 
     function showAdminPanel() {
-        // Восстанавливаем сохранённое состояние
         const savedDom = sessionStorage.getItem('pagesDom');
         const savedHashes = sessionStorage.getItem('selectedPagesHashes');
         if (savedDom && savedHashes) {
@@ -991,22 +984,27 @@
             </div>
         `;
 
-        // Минимальные отступы для ответа LLM
+        // Усиленные стили для минимальных отступов в ответе LLM
         const style = document.createElement('style');
         style.textContent = `
+            .llm-response-text * {
+                margin: 0 !important;
+                padding: 0 !important;
+            }
             .llm-response-text h1, .llm-response-text h2, .llm-response-text h3 {
-                margin: 0.2em 0 0.1em 0;
+                margin-top: 0.2em !important;
+                margin-bottom: 0.1em !important;
                 color: #005f73;
             }
             .llm-response-text p {
-                margin: 0.2em 0;
+                margin: 0.2em 0 !important;
             }
             .llm-response-text ul, .llm-response-text ol {
-                margin: 0.1em 0 0.2em 0;
-                padding-left: 1.5em;
+                margin: 0.1em 0 0.2em 1.5em !important;
+                padding-left: 0 !important;
             }
             .llm-response-text li {
-                margin: 0.05em 0;
+                margin: 0.05em 0 !important;
             }
         `;
         document.head.appendChild(style);
@@ -1120,7 +1118,14 @@
             }
             statusDiv.innerText='Группировка ответов...';
             let groupQuery=`${groupPrompt}\n\n---ИНДИВИДУАЛЬНЫЕ ОТВЕТЫ---\n${individualAnswers.join('\n\n')}`;
-            lastQuery = `---ЗАПРОС К LLM (ПЕРВОНАЧАЛЬНЫЙ АНАЛИЗ КАЖДОЙ СТРАНИЦЫ И ГРУППИРОВКА)---\n${groupQuery}`; // сохраняем полный запрос, который использовался для группировки (он включает метрики и страницы)
+            // Формируем полный запрос для скачивания (промпт + метрики + все DOM)
+            let fullData = `${singlePrompt}\n\n---МЕТРИКИ---\n${metricsJson}\n---ВСЕ СТРАНИЦЫ---\n`;
+            for(let [hash,pageHtml] of pageEntries){
+                let name = document.querySelector(`.article-checkbox[data-hash="${hash}"]`)?.parentElement.innerText.trim() ||
+                           document.querySelector(`.category-checkbox[data-category-hash="${hash}"]`)?.parentElement.innerText.trim() || hash;
+                fullData += `\n===== СТРАНИЦА: ${name} (${hash}) =====\n${pageHtml}`;
+            }
+            lastQuery = fullData;
             try{
                 let resp=await fetch(targetApi,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model:modelName,prompt:groupQuery,stream:false})});
                 if(!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1138,9 +1143,7 @@
                     issues.forEach(iss=>lastAnswer+=`- Элемент **${iss.element}**: ${iss.reason}. Цвет текста: ${iss.color}, фон: ${iss.bg}\n`);
                 }
             }
-            // Если проблем с контрастностью нет – ничего не добавляем
             updateProgress(totalSteps);
-            // Рендерим Markdown (синхронно)
             if (typeof marked !== 'undefined') {
                 try {
                     lastAnswerHtml = marked.parse(lastAnswer);
@@ -1159,11 +1162,7 @@
 
         downloadQueryBtn.onclick = () => {
             if(!lastQuery){ errorDiv.innerText='Нет запроса.'; return; }
-            let a=document.createElement('a');
-            a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'}));
-            a.download='llm_query.txt';
-            a.click();
-            URL.revokeObjectURL(a.href);
+            let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastQuery],{type:'text/plain'})); a.download='llm_query.txt'; a.click(); URL.revokeObjectURL(a.href);
         };
         downloadAnswerBtn.onclick = () => {
             if(!lastAnswer){ errorDiv.innerText='Нет ответа.'; return; }
@@ -1172,23 +1171,17 @@
                 let a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([lastAnswer],{type:'text/plain'})); a.download='llm_response.txt'; a.click(); URL.revokeObjectURL(a.href);
             } else if(format === 'pdf'){
                 if(typeof html2pdf === 'undefined'){ errorDiv.innerText='Библиотека PDF не загружена.'; return; }
-                // Для PDF используем отрендеренный HTML, добавляем стили для печати
                 const tempDiv = document.createElement('div');
                 tempDiv.style.padding = '20px';
                 tempDiv.style.fontFamily = 'Arial, sans-serif';
                 tempDiv.style.maxWidth = '100%';
                 tempDiv.style.wordWrap = 'break-word';
                 tempDiv.innerHTML = lastAnswerHtml;
-                // Дополнительные стили для печати, чтобы избежать пустого пространства и обрезки
-                const stylePrint = document.createElement('style');
-                stylePrint.textContent = 'body { margin: 0; padding: 0; } .page-break { page-break-before: always; }';
-                tempDiv.appendChild(stylePrint);
-                const opt = { margin: 0.5, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, letterRendering: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+                const opt = { margin: 0.3, filename: 'llm_response.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, letterRendering: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
                 html2pdf().set(opt).from(tempDiv).save();
             }
         };
 
-        // Восстанавливаем состояние чекбоксов и информации
         restoreCheckboxesState();
     }
 
